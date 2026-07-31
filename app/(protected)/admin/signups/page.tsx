@@ -17,25 +17,25 @@ export default async function PlatformSignupsPage({
 
   let requests: SignupRequestRow[] = [];
   let companies: { id: string; name: string }[] = [];
-  let notAuthorized = false;
+  let errorMessage: string | null = null;
 
   try {
     [requests, companies] = await Promise.all([
       listPlatformPendingRequests(),
       listCompaniesForAssignment(),
     ]);
-  } catch {
-    notAuthorized = true;
+  } catch (err) {
+    errorMessage =
+      err instanceof Error ? err.message : "Unable to load signup requests.";
+    console.error("[admin/signups] failed to load:", err);
   }
 
-  if (notAuthorized) {
+  if (errorMessage) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-slate-100 px-6 text-slate-900">
-        <div className="rounded-md border border-slate-300 bg-white p-8 text-center">
-          <h1 className="text-xl font-semibold">Not authorized</h1>
-          <p className="mt-2 text-sm text-slate-600">
-            This page is only available to TC Applicator Support.
-          </p>
+        <div className="max-w-md rounded-md border border-slate-300 bg-white p-8 text-center">
+          <h1 className="text-xl font-semibold">Unable to load this page</h1>
+          <p className="mt-2 text-sm text-slate-600">{errorMessage}</p>
         </div>
       </main>
     );
