@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/app/lib/supabase/server";
 import { logout } from "@/app/login/actions";
 import { getCurrentUserAndCompany } from "@/app/lib/repositories/tenant";
+import { getSignedCompanyLogoUrl } from "@/app/lib/repositories/platformOverview";
 import { ensureOwnSignupRequest } from "@/app/lib/repositories/signupRequests";
 import TopNav from "@/components/nav/TopNav";
 
@@ -78,7 +79,17 @@ export default async function ProtectedLayout({
     );
   }
 
-  const { companyName, fullName, isAdmin, isPlatformAdmin } = context;
+  const {
+    companyName,
+    companyLogoPath,
+    fullName,
+    isAdmin,
+    isPlatformAdmin,
+  } = context;
+
+  const companyLogoUrl = companyLogoPath
+    ? await getSignedCompanyLogoUrl(companyLogoPath)
+    : null;
 
   const navLinks = [
     { href: "/", label: "Dashboard" },
@@ -86,6 +97,7 @@ export default async function ProtectedLayout({
     { href: "/oem-parts", label: "Parts Database" },
     { href: "/approvals", label: "Pending Approvals" },
     { href: "/drawings", label: "Approved Drawings" },
+    { href: "/settings", label: "Settings" },
   ];
 
   if (isAdmin) {
@@ -110,14 +122,25 @@ export default async function ProtectedLayout({
           </Link>
 
           <div className="flex items-center gap-4">
-            <div className="text-right text-sm">
-              <p className="font-medium text-slate-900">
-                {companyName || "—"}
-              </p>
-              <p className="text-slate-500">
-                {fullName ? `${fullName} · ` : ""}
-                {roleLabel(isPlatformAdmin, isAdmin)}
-              </p>
+            <div className="flex items-center gap-3">
+              {companyLogoUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={companyLogoUrl}
+                  alt={`${companyName} logo`}
+                  className="h-8 w-auto"
+                />
+              )}
+
+              <div className="text-right text-sm">
+                <p className="font-medium text-slate-900">
+                  {companyName || "—"}
+                </p>
+                <p className="text-slate-500">
+                  {fullName ? `${fullName} · ` : ""}
+                  {roleLabel(isPlatformAdmin, isAdmin)}
+                </p>
+              </div>
             </div>
 
             <form action={logout}>
