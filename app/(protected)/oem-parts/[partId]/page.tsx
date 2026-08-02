@@ -1,25 +1,26 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
-  oemParts,
-  type OemPart,
-  type PartCategory,
-  type ProfileFamily,
-} from "@/app/data/oemParts";
+  getOemPartAction,
+  updateOemPartAction,
+  deleteOemPartAction,
+} from "@/app/(protected)/oem-parts/actions";
+import type {
+  EngineeringStatus,
+  StandardCoatingPattern,
+} from "@/app/types/oem-parts";
 
-const STORAGE_KEY = "tc-applicator-custom-oem-parts";
-
-const PROFILE_FAMILIES: ProfileFamily[] = [
+const PROFILE_FAMILIES = [
   "Reverse Double Bevel",
   "Dozer End Bit",
   "Scraper Router Bit",
   "Grader Blade",
 ];
 
-const PART_CATEGORIES: PartCategory[] = [
+const PART_CATEGORIES = [
   "Loader Centre Edge",
   "Dozer Centre Edge",
   "Dozer Outer Edge",
@@ -30,70 +31,86 @@ const PART_CATEGORIES: PartCategory[] = [
   "Grader Blade",
 ];
 
-function readStoredParts(): OemPart[] {
-  if (typeof window === "undefined") {
-    return [];
-  }
-
-  const savedValue = window.localStorage.getItem(STORAGE_KEY);
-
-  if (!savedValue) {
-    return [];
-  }
-
-  try {
-    const parsedValue = JSON.parse(savedValue);
-
-    return Array.isArray(parsedValue)
-      ? (parsedValue as OemPart[])
-      : [];
-  } catch {
-    return [];
-  }
-}
+type FormPartState = {
+  oemPartNumber: string;
+  manufacturer: string;
+  description: string;
+  partCategory: string;
+  profileFamily: string;
+  lengthMm: number;
+  widthMm: number;
+  thicknessMm: number;
+  holeCount: number;
+  holeDiameterMm: number;
+  compatibleMachines: string[];
+  standardPattern: StandardCoatingPattern;
+  engineeringStatus: EngineeringStatus;
+  conditionRequirement: string;
+  notes?: string;
+};
 
 export default function OemPartDetailPage() {
   const params = useParams<{ partId: string }>();
   const router = useRouter();
-
   const partId = decodeURIComponent(params.partId);
 
-  const [customParts, setCustomParts] = useState<OemPart[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [notFound, setNotFound] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-
-  const allParts = useMemo(
-    () => [...oemParts, ...customParts],
-    [customParts]
-  );
-
-  const part = useMemo(
-    () => allParts.find((item) => item.id === partId) ?? null,
-    [allParts, partId]
-  );
-
-  const isCustomPart = customParts.some(
-    (item) => item.id === partId
-  );
-
-  const [formPart, setFormPart] = useState<OemPart | null>(null);
+  const [formPart, setFormPart] = useState<FormPartState | null>(null);
+  const [savedPart, setSavedPart] = useState<FormPartState | null>(null);
+  const [machinesText, setMachinesText] = useState("");
 
   useEffect(() => {
-    const storedParts = readStoredParts();
-    setCustomParts(storedParts);
-    setIsLoaded(true);
-  }, []);
+    let cancelled = false;
 
-  useEffect(() => {
-    if (part) {
-      setFormPart(part);
-    }
-  }, [part]);
+    (async () => {
+      const result = await getOemPartAction(partId);
 
-  function updateFormPart<K extends keyof OemPart>(
+      if (cancelled) return;
+
+      if (!result.success || !result.part) {
+        setNotFound(true);
+        setIsLoaded(true);
+        return;
+      }
+
+      const part = result.part;
+      const loaded: FormPartState = {
+        oemPartNumber: part.oemPartNumber,
+        manufacturer: part.manufacturer,
+        description: part.description,
+        partCategory: part.partCategory,
+        profileFamily: part.profileFamily,
+        lengthMm: part.lengthMm,
+        widthMm: part.widthMm,
+        thicknessMm: part.thicknessMm,
+        holeCount: part.holeCount,
+        holeDiameterMm: part.holeDiameterMm,
+        compatibleMachines: part.compatibleMachines,
+        standardPattern: part.standardPattern,
+        engineeringStatus: part.engineeringStatus,
+        conditionRequirement: part.conditionRequirement,
+        notes: part.notes,
+      };
+
+      setFormPart(loaded);
+      setSavedPart(loaded);
+      setMachinesText(part.compatibleMachines.join("\n"));
+      setIsLoaded(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [partId]);
+
+  function updateField<K extends keyof FormPartState>(
     key: K,
-    value: OemPart[K]
+    value: FormPartState[K]
   ) {
     setFormPart((current) =>
       current ? { ...current, [key]: value } : current
@@ -101,28 +118,23 @@ export default function OemPartDetailPage() {
   }
 
   function updatePattern(
-    key: keyof OemPart["standardPattern"],
+    key: keyof StandardCoatingPattern,
     value: number
   ) {
     setFormPart((current) =>
       current
         ? {
             ...current,
-            standardPattern: {
-              ...current.standardPattern,
-              [key]: value,
-            },
+            standardPattern: { ...current.standardPattern, [key]: value },
           }
         : current
     );
   }
 
-  function handleSave(event: FormEvent<HTMLFormElement>) {
+  async function handleSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!formPart || !isCustomPart) {
-      return;
-    }
+    if (!formPart) return;
 
     if (
       !formPart.oemPartNumber.trim() ||
@@ -140,49 +152,61 @@ export default function OemPartDetailPage() {
       formPart.widthMm <= 0 ||
       formPart.thicknessMm <= 0
     ) {
-      setErrorMessage(
-        "Length, width and thickness must be greater than zero."
-      );
+      setErrorMessage("Length, width and thickness must be greater than zero.");
       return;
     }
 
-    const updatedParts = customParts.map((item) =>
-      item.id === formPart.id ? formPart : item
-    );
-
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify(updatedParts)
-    );
-
-    setCustomParts(updatedParts);
+    setIsSaving(true);
     setErrorMessage("");
+
+    const result = await updateOemPartAction(partId, {
+      oemPartNumber: formPart.oemPartNumber.trim(),
+      manufacturer: formPart.manufacturer.trim(),
+      description: formPart.description.trim(),
+      partCategory: formPart.partCategory,
+      profileFamily: formPart.profileFamily,
+      lengthMm: formPart.lengthMm,
+      widthMm: formPart.widthMm,
+      thicknessMm: formPart.thicknessMm,
+      holeCount: formPart.holeCount,
+      holeDiameterMm: formPart.holeDiameterMm,
+      compatibleMachines: machinesText
+        .split(/[\n,]/)
+        .map((m) => m.trim())
+        .filter(Boolean),
+      standardPattern: formPart.standardPattern,
+      engineeringStatus: formPart.engineeringStatus,
+      conditionRequirement: "New OEM Specification Only",
+      notes: formPart.notes?.trim() || undefined,
+    });
+
+    setIsSaving(false);
+
+    if (!result.success) {
+      setErrorMessage(result.message);
+      return;
+    }
+
+    setSavedPart(formPart);
     setIsEditing(false);
   }
 
-  function handleDelete() {
-    if (!isCustomPart || !formPart) {
-      return;
-    }
+  async function handleDelete() {
+    if (!formPart) return;
 
     const confirmed = window.confirm(
       `Delete OEM part ${formPart.oemPartNumber}?`
     );
+    if (!confirmed) return;
 
-    if (!confirmed) {
-      return;
-    }
+    setIsDeleting(true);
 
-    const updatedParts = customParts.filter(
-      (item) => item.id !== formPart.id
-    );
-
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify(updatedParts)
-    );
-
-    router.push("/oem-parts");
+    const formData = new FormData();
+    formData.set("partId", partId);
+    await deleteOemPartAction(formData);
+    // deleteOemPartAction always redirects — no return value to check.
+    // If it somehow doesn't navigate away, at least stop the spinner.
+    setIsDeleting(false);
   }
 
   if (!isLoaded) {
@@ -193,19 +217,15 @@ export default function OemPartDetailPage() {
     );
   }
 
-  if (!part || !formPart) {
+  if (notFound || !formPart) {
     return (
       <main className="min-h-screen bg-slate-100 text-slate-900">
         <div className="mx-auto max-w-3xl px-6 py-12">
           <div className="rounded border border-slate-300 bg-white p-8 text-center">
-            <h1 className="text-xl font-semibold">
-              OEM part not found
-            </h1>
-
+            <h1 className="text-xl font-semibold">OEM part not found</h1>
             <p className="mt-2 text-sm text-slate-600">
               This record may have been deleted or the link is invalid.
             </p>
-
             <Link
               href="/oem-parts"
               className="mt-6 inline-block rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white"
@@ -223,13 +243,8 @@ export default function OemPartDetailPage() {
       <header className="border-b border-slate-300 bg-white">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <div>
-            <h1 className="text-xl font-semibold">
-              TC Applicator
-            </h1>
-
-            <p className="text-sm text-slate-500">
-              OEM engineering record
-            </p>
+            <h1 className="text-xl font-semibold">TC Applicator</h1>
+            <p className="text-sm text-slate-500">OEM engineering record</p>
           </div>
 
           <div className="flex gap-3">
@@ -241,9 +256,7 @@ export default function OemPartDetailPage() {
             </Link>
 
             <Link
-              href={`/estimates/new?oemPartId=${encodeURIComponent(
-                formPart.id
-              )}`}
+              href={`/estimates/new?oemPartId=${encodeURIComponent(partId)}`}
               className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
             >
               Create Estimate
@@ -252,29 +265,20 @@ export default function OemPartDetailPage() {
         </div>
       </header>
 
-      <form
-        onSubmit={handleSave}
-        className="mx-auto max-w-7xl px-6 py-6"
-      >
+      <form onSubmit={handleSave} className="mx-auto max-w-7xl px-6 py-6">
         <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-3">
-              <h2 className="text-2xl font-semibold">
-                {formPart.oemPartNumber}
-              </h2>
-
-              <StatusBadge
-                status={formPart.engineeringStatus}
-              />
+              <h2 className="text-2xl font-semibold">{formPart.oemPartNumber}</h2>
+              <StatusBadge status={formPart.engineeringStatus} />
             </div>
-
             <p className="mt-1 text-sm text-slate-600">
               {formPart.manufacturer} · {formPart.description}
             </p>
           </div>
 
           <div className="flex gap-3">
-            {isCustomPart && !isEditing && (
+            {!isEditing && (
               <>
                 <button
                   type="button"
@@ -287,9 +291,10 @@ export default function OemPartDetailPage() {
                 <button
                   type="button"
                   onClick={handleDelete}
-                  className="rounded border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+                  disabled={isDeleting}
+                  className="rounded border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
                 >
-                  Delete
+                  {isDeleting ? "Deleting..." : "Delete"}
                 </button>
               </>
             )}
@@ -299,7 +304,10 @@ export default function OemPartDetailPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    setFormPart(part);
+                    if (savedPart) {
+                      setFormPart(savedPart);
+                      setMachinesText(savedPart.compatibleMachines.join("\n"));
+                    }
                     setErrorMessage("");
                     setIsEditing(false);
                   }}
@@ -310,21 +318,15 @@ export default function OemPartDetailPage() {
 
                 <button
                   type="submit"
-                  className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+                  disabled={isSaving}
+                  className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
                 >
-                  Save Changes
+                  {isSaving ? "Saving..." : "Save Changes"}
                 </button>
               </>
             )}
           </div>
         </div>
-
-        {!isCustomPart && (
-          <div className="mb-6 rounded border border-slate-300 bg-white px-4 py-3 text-sm text-slate-700">
-            This is a built-in engineering record. Built-in records are
-            currently read-only.
-          </div>
-        )}
 
         {errorMessage && (
           <div className="mb-6 rounded border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800">
@@ -339,55 +341,35 @@ export default function OemPartDetailPage() {
                 label="OEM Part Number"
                 value={formPart.oemPartNumber}
                 disabled={!isEditing}
-                onChange={(value) =>
-                  updateFormPart("oemPartNumber", value)
-                }
+                onChange={(v) => updateField("oemPartNumber", v)}
               />
-
               <EditableTextField
                 label="Manufacturer"
                 value={formPart.manufacturer}
                 disabled={!isEditing}
-                onChange={(value) =>
-                  updateFormPart("manufacturer", value)
-                }
+                onChange={(v) => updateField("manufacturer", v)}
               />
-
               <div className="md:col-span-2">
                 <EditableTextField
                   label="Description"
                   value={formPart.description}
                   disabled={!isEditing}
-                  onChange={(value) =>
-                    updateFormPart("description", value)
-                  }
+                  onChange={(v) => updateField("description", v)}
                 />
               </div>
-
               <EditableSelectField
                 label="Part Category"
                 value={formPart.partCategory}
                 disabled={!isEditing}
                 options={PART_CATEGORIES}
-                onChange={(value) =>
-                  updateFormPart(
-                    "partCategory",
-                    value as PartCategory
-                  )
-                }
+                onChange={(v) => updateField("partCategory", v)}
               />
-
               <EditableSelectField
                 label="Profile Family"
                 value={formPart.profileFamily}
                 disabled={!isEditing}
                 options={PROFILE_FAMILIES}
-                onChange={(value) =>
-                  updateFormPart(
-                    "profileFamily",
-                    value as ProfileFamily
-                  )
-                }
+                onChange={(v) => updateField("profileFamily", v)}
               />
             </div>
           </Section>
@@ -398,19 +380,11 @@ export default function OemPartDetailPage() {
                 label="Engineering Status"
                 value={formPart.engineeringStatus}
                 disabled={!isEditing}
-                options={[
-                  "Draft",
-                  "Pending Verification",
-                  "Verified",
-                ]}
-                onChange={(value) =>
-                  updateFormPart(
-                    "engineeringStatus",
-                    value as OemPart["engineeringStatus"]
-                  )
+                options={["Draft", "Pending Verification", "Verified"]}
+                onChange={(v) =>
+                  updateField("engineeringStatus", v as EngineeringStatus)
                 }
               />
-
               <ReadOnlyField
                 label="Condition Requirement"
                 value={formPart.conditionRequirement}
@@ -418,16 +392,11 @@ export default function OemPartDetailPage() {
             </div>
 
             <label className="mt-4 block">
-              <span className="mb-1 block text-sm font-medium">
-                Engineering Notes
-              </span>
-
+              <span className="mb-1 block text-sm font-medium">Engineering Notes</span>
               <textarea
                 value={formPart.notes ?? ""}
                 disabled={!isEditing}
-                onChange={(event) =>
-                  updateFormPart("notes", event.target.value)
-                }
+                onChange={(e) => updateField("notes", e.target.value)}
                 rows={5}
                 className="w-full rounded border border-slate-300 px-3 py-2 disabled:bg-slate-50 disabled:text-slate-700"
               />
@@ -441,72 +410,47 @@ export default function OemPartDetailPage() {
                 value={formPart.lengthMm}
                 disabled={!isEditing}
                 suffix="mm"
-                onChange={(value) =>
-                  updateFormPart("lengthMm", value)
-                }
+                onChange={(v) => updateField("lengthMm", v)}
               />
-
               <EditableNumberField
                 label="Width"
                 value={formPart.widthMm}
                 disabled={!isEditing}
                 suffix="mm"
-                onChange={(value) =>
-                  updateFormPart("widthMm", value)
-                }
+                onChange={(v) => updateField("widthMm", v)}
               />
-
               <EditableNumberField
                 label="Thickness"
                 value={formPart.thicknessMm}
                 disabled={!isEditing}
                 suffix="mm"
                 step={0.1}
-                onChange={(value) =>
-                  updateFormPart("thicknessMm", value)
-                }
+                onChange={(v) => updateField("thicknessMm", v)}
               />
-
               <EditableNumberField
                 label="Bolt Holes"
                 value={formPart.holeCount}
                 disabled={!isEditing}
-                onChange={(value) =>
-                  updateFormPart("holeCount", value)
-                }
+                onChange={(v) => updateField("holeCount", v)}
               />
-
               <EditableNumberField
                 label="Hole Diameter"
                 value={formPart.holeDiameterMm}
                 disabled={!isEditing}
                 suffix="mm"
                 step={0.1}
-                onChange={(value) =>
-                  updateFormPart("holeDiameterMm", value)
-                }
+                onChange={(v) => updateField("holeDiameterMm", v)}
               />
             </div>
           </Section>
 
           <Section title="Compatible Machines">
             <label className="block">
-              <span className="mb-1 block text-sm font-medium">
-                Machine Models
-              </span>
-
+              <span className="mb-1 block text-sm font-medium">Machine Models</span>
               <textarea
-                value={formPart.compatibleMachines.join("\n")}
+                value={machinesText}
                 disabled={!isEditing}
-                onChange={(event) =>
-                  updateFormPart(
-                    "compatibleMachines",
-                    event.target.value
-                      .split(/[\n,]/)
-                      .map((value) => value.trim())
-                      .filter(Boolean)
-                  )
-                }
+                onChange={(e) => setMachinesText(e.target.value)}
                 rows={5}
                 className="w-full rounded border border-slate-300 px-3 py-2 disabled:bg-slate-50 disabled:text-slate-700"
               />
@@ -518,59 +462,27 @@ export default function OemPartDetailPage() {
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <EditableNumberField
                   label="Bevel Runs per Side"
-                  value={
-                    formPart.standardPattern
-                      .bevelRunsPerSide
-                  }
+                  value={formPart.standardPattern.bevelRunsPerSide}
                   disabled={!isEditing}
-                  onChange={(value) =>
-                    updatePattern(
-                      "bevelRunsPerSide",
-                      value
-                    )
-                  }
+                  onChange={(v) => updatePattern("bevelRunsPerSide", v)}
                 />
-
                 <EditableNumberField
                   label="Leading Edge Runs per Side"
-                  value={
-                    formPart.standardPattern
-                      .leadingEdgeRunsPerSide
-                  }
+                  value={formPart.standardPattern.leadingEdgeRunsPerSide}
                   disabled={!isEditing}
-                  onChange={(value) =>
-                    updatePattern(
-                      "leadingEdgeRunsPerSide",
-                      value
-                    )
-                  }
+                  onChange={(v) => updatePattern("leadingEdgeRunsPerSide", v)}
                 />
-
                 <EditableNumberField
                   label="Bottom Face Runs per Side"
-                  value={
-                    formPart.standardPattern
-                      .bottomFaceRunsPerSide
-                  }
+                  value={formPart.standardPattern.bottomFaceRunsPerSide}
                   disabled={!isEditing}
-                  onChange={(value) =>
-                    updatePattern(
-                      "bottomFaceRunsPerSide",
-                      value
-                    )
-                  }
+                  onChange={(v) => updatePattern("bottomFaceRunsPerSide", v)}
                 />
-
                 <EditableNumberField
                   label="Eyebrows per Hole"
-                  value={
-                    formPart.standardPattern
-                      .eyebrowsPerHole
-                  }
+                  value={formPart.standardPattern.eyebrowsPerHole}
                   disabled={!isEditing}
-                  onChange={(value) =>
-                    updatePattern("eyebrowsPerHole", value)
-                  }
+                  onChange={(v) => updatePattern("eyebrowsPerHole", v)}
                 />
               </div>
             </Section>
@@ -581,19 +493,12 @@ export default function OemPartDetailPage() {
   );
 }
 
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="rounded-md border border-slate-300 bg-white">
       <div className="border-b border-slate-300 px-5 py-4">
         <h3 className="font-semibold">{title}</h3>
       </div>
-
       <div className="p-5">{children}</div>
     </section>
   );
@@ -612,14 +517,11 @@ function EditableTextField({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-sm font-medium">
-        {label}
-      </span>
-
+      <span className="mb-1 block text-sm font-medium">{label}</span>
       <input
         value={value}
         disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(e) => onChange(e.target.value)}
         className="w-full rounded border border-slate-300 px-3 py-2 disabled:bg-slate-50 disabled:text-slate-700"
       />
     </label>
@@ -641,14 +543,11 @@ function EditableSelectField({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-sm font-medium">
-        {label}
-      </span>
-
+      <span className="mb-1 block text-sm font-medium">{label}</span>
       <select
         value={value}
         disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(e) => onChange(e.target.value)}
         className="w-full rounded border border-slate-300 px-3 py-2 disabled:bg-slate-50 disabled:text-slate-700"
       >
         {options.map((option) => (
@@ -678,10 +577,7 @@ function EditableNumberField({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-sm font-medium">
-        {label}
-      </span>
-
+      <span className="mb-1 block text-sm font-medium">{label}</span>
       <div className="flex">
         <input
           type="number"
@@ -689,16 +585,13 @@ function EditableNumberField({
           step={step}
           value={value}
           disabled={disabled}
-          onChange={(event) =>
-            onChange(Number(event.target.value) || 0)
-          }
+          onChange={(e) => onChange(Number(e.target.value) || 0)}
           className={
             suffix
               ? "min-w-0 flex-1 rounded-l border border-slate-300 px-3 py-2 disabled:bg-slate-50 disabled:text-slate-700"
               : "min-w-0 flex-1 rounded border border-slate-300 px-3 py-2 disabled:bg-slate-50 disabled:text-slate-700"
           }
         />
-
         {suffix && (
           <span className="flex items-center rounded-r border border-l-0 border-slate-300 bg-slate-50 px-3 text-sm text-slate-600">
             {suffix}
@@ -709,19 +602,10 @@ function EditableNumberField({
   );
 }
 
-function ReadOnlyField({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
+function ReadOnlyField({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="mb-1 text-sm font-medium">
-        {label}
-      </div>
-
+      <div className="mb-1 text-sm font-medium">{label}</div>
       <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
         {value}
       </div>
@@ -729,11 +613,7 @@ function ReadOnlyField({
   );
 }
 
-function StatusBadge({
-  status,
-}: {
-  status: OemPart["engineeringStatus"];
-}) {
+function StatusBadge({ status }: { status: EngineeringStatus }) {
   const classes =
     status === "Verified"
       ? "border-emerald-300 bg-emerald-50 text-emerald-800"
@@ -742,9 +622,7 @@ function StatusBadge({
         : "border-slate-300 bg-slate-100 text-slate-700";
 
   return (
-    <span
-      className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${classes}`}
-    >
+    <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${classes}`}>
       {status}
     </span>
   );

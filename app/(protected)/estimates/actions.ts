@@ -11,6 +11,7 @@ import {
   type CreateEstimateInput,
 } from "@/app/lib/repositories/estimates";
 import { getOemParts, type OemPart } from "@/app/lib/repositories/oemParts";
+import { getCompanySettings, type CompanySettings } from "@/app/lib/settings/companySettings";
 
 type ActionResult<T> =
   | { success: true; estimate: T }
@@ -72,9 +73,6 @@ export async function uploadEstimatePhotoAction(
 }
 
 // ---- OEM part catalog, for the New Estimate page's search ----
-// This fetches the real Supabase-backed catalog (the same one
-// /oem-parts manages) rather than the old static app/data/oemParts.ts
-// list, so matched parts carry a genuine id usable as a foreign key.
 
 type PartsActionResult =
   | { success: true; parts: OemPart[] }
@@ -92,10 +90,26 @@ export async function getOemPartsAction(): Promise<PartsActionResult> {
   }
 }
 
+// ---- Company settings (carbide rate, run width, eyebrow length), for
+// the New Estimate page's live calculator defaults ----
+
+type SettingsActionResult =
+  | { success: true; settings: CompanySettings }
+  | { success: false; message: string };
+
+export async function getCompanySettingsAction(): Promise<SettingsActionResult> {
+  try {
+    const settings = await getCompanySettings();
+    return { success: true, settings };
+  } catch (error) {
+    return {
+      success: false,
+      message: toErrorMessage(error, "Unable to load company settings."),
+    };
+  }
+}
+
 // ---- Form-based actions for the /approvals page ----
-// These follow the same pattern as deleteOemPartAction: read from
-// FormData, redirect with a query-string error/success message, and
-// revalidate the page so the list refreshes.
 
 export async function approveEstimateAction(formData: FormData) {
   const estimateId = String(formData.get("estimateId") ?? "");

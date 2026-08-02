@@ -3,22 +3,20 @@
 import Link from "next/link";
 import { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { createOemPartAction } from "@/app/(protected)/oem-parts/actions";
 import type {
-  OemPart,
-  PartCategory,
-  ProfileFamily,
-} from "@/app/data/oemParts";
+  EngineeringStatus,
+  StandardCoatingPattern,
+} from "@/app/types/oem-parts";
 
-const STORAGE_KEY = "tc-applicator-custom-oem-parts";
-
-const PROFILE_FAMILIES: ProfileFamily[] = [
+const PROFILE_FAMILIES = [
   "Reverse Double Bevel",
   "Dozer End Bit",
   "Scraper Router Bit",
   "Grader Blade",
 ];
 
-const PART_CATEGORIES: PartCategory[] = [
+const PART_CATEGORIES = [
   "Loader Centre Edge",
   "Dozer Centre Edge",
   "Dozer Outer Edge",
@@ -29,38 +27,6 @@ const PART_CATEGORIES: PartCategory[] = [
   "Grader Blade",
 ];
 
-function createPartId(
-  manufacturer: string,
-  oemPartNumber: string
-) {
-  return `${manufacturer}-${oemPartNumber}`
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
-function readStoredParts(): OemPart[] {
-  if (typeof window === "undefined") {
-    return [];
-  }
-
-  const savedValue = window.localStorage.getItem(STORAGE_KEY);
-
-  if (!savedValue) {
-    return [];
-  }
-
-  try {
-    const parsedValue = JSON.parse(savedValue);
-
-    return Array.isArray(parsedValue)
-      ? (parsedValue as OemPart[])
-      : [];
-  } catch {
-    return [];
-  }
-}
-
 export default function NewOemPartPage() {
   const router = useRouter();
 
@@ -68,11 +34,8 @@ export default function NewOemPartPage() {
   const [manufacturer, setManufacturer] = useState("");
   const [description, setDescription] = useState("");
 
-  const [profileFamily, setProfileFamily] =
-    useState<ProfileFamily>("Reverse Double Bevel");
-
-  const [partCategory, setPartCategory] =
-    useState<PartCategory>("Loader Centre Edge");
+  const [profileFamily, setProfileFamily] = useState("Reverse Double Bevel");
+  const [partCategory, setPartCategory] = useState("Loader Centre Edge");
 
   const [lengthMm, setLengthMm] = useState(0);
   const [widthMm, setWidthMm] = useState(0);
@@ -81,23 +44,19 @@ export default function NewOemPartPage() {
   const [holeCount, setHoleCount] = useState(0);
   const [holeDiameterMm, setHoleDiameterMm] = useState(0);
 
-  const [compatibleMachinesText, setCompatibleMachinesText] =
-    useState("");
+  const [compatibleMachinesText, setCompatibleMachinesText] = useState("");
 
   const [bevelRunsPerSide, setBevelRunsPerSide] = useState(2);
-  const [leadingEdgeRunsPerSide, setLeadingEdgeRunsPerSide] =
-    useState(1);
-  const [bottomFaceRunsPerSide, setBottomFaceRunsPerSide] =
-    useState(2);
+  const [leadingEdgeRunsPerSide, setLeadingEdgeRunsPerSide] = useState(1);
+  const [bottomFaceRunsPerSide, setBottomFaceRunsPerSide] = useState(2);
   const [eyebrowsPerHole, setEyebrowsPerHole] = useState(0);
 
   const [engineeringStatus, setEngineeringStatus] =
-    useState<OemPart["engineeringStatus"]>(
-      "Pending Verification"
-    );
+    useState<EngineeringStatus>("Pending Verification");
 
   const [notes, setNotes] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
   const compatibleMachines = useMemo(
     () =>
@@ -108,91 +67,62 @@ export default function NewOemPartPage() {
     [compatibleMachinesText]
   );
 
-  const partPreview: OemPart = {
-    id:
-      createPartId(manufacturer, oemPartNumber) ||
-      "new-oem-part",
-    oemPartNumber: oemPartNumber.trim(),
-    manufacturer: manufacturer.trim(),
-    description: description.trim(),
-    profileFamily,
-    partCategory,
-    lengthMm,
-    widthMm,
-    thicknessMm,
-    holeCount,
-    holeDiameterMm,
-    compatibleMachines,
-    standardPattern: {
-      bevelRunsPerSide,
-      leadingEdgeRunsPerSide,
-      bottomFaceRunsPerSide,
-      eyebrowsPerHole,
-    },
-    conditionRequirement: "New OEM Specification Only",
-    engineeringStatus,
-    notes: notes.trim() || undefined,
+  const standardPattern: StandardCoatingPattern = {
+    bevelRunsPerSide,
+    leadingEdgeRunsPerSide,
+    bottomFaceRunsPerSide,
+    eyebrowsPerHole,
   };
 
-  function validatePart() {
-    if (!oemPartNumber.trim()) {
-      return "Enter an OEM part number.";
-    }
-
-    if (!manufacturer.trim()) {
-      return "Enter a manufacturer.";
-    }
-
-    if (!description.trim()) {
-      return "Enter a part description.";
-    }
-
-    if (
-      lengthMm <= 0 ||
-      widthMm <= 0 ||
-      thicknessMm <= 0
-    ) {
+  function validate() {
+    if (!oemPartNumber.trim()) return "Enter an OEM part number.";
+    if (!manufacturer.trim()) return "Enter a manufacturer.";
+    if (!description.trim()) return "Enter a part description.";
+    if (lengthMm <= 0 || widthMm <= 0 || thicknessMm <= 0) {
       return "Length, width and thickness must be greater than zero.";
     }
-
     if (holeCount < 0 || holeDiameterMm < 0) {
       return "Hole values cannot be negative.";
     }
-
     return "";
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const validationError = validatePart();
-
+    const validationError = validate();
     if (validationError) {
       setErrorMessage(validationError);
       return;
     }
 
-    const storedParts = readStoredParts();
+    setIsSaving(true);
+    setErrorMessage("");
 
-    const duplicatePart = storedParts.some(
-      (part) =>
-        part.oemPartNumber.toLowerCase() ===
-          partPreview.oemPartNumber.toLowerCase() &&
-        part.manufacturer.toLowerCase() ===
-          partPreview.manufacturer.toLowerCase()
-    );
+    const result = await createOemPartAction({
+      oemPartNumber: oemPartNumber.trim(),
+      manufacturer: manufacturer.trim(),
+      description: description.trim(),
+      partCategory,
+      profileFamily,
+      lengthMm,
+      widthMm,
+      thicknessMm,
+      holeCount,
+      holeDiameterMm,
+      compatibleMachines,
+      standardPattern,
+      engineeringStatus,
+      conditionRequirement: "New OEM Specification Only",
+      notes: notes.trim() || undefined,
+    });
 
-    if (duplicatePart) {
-      setErrorMessage(
-        "A saved part with this manufacturer and OEM number already exists."
-      );
+    setIsSaving(false);
+
+    if (!result.success) {
+      setErrorMessage(result.message);
       return;
     }
-
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify([...storedParts, partPreview])
-    );
 
     router.push("/oem-parts");
   }
@@ -202,13 +132,8 @@ export default function NewOemPartPage() {
       <header className="border-b border-slate-300 bg-white">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <div>
-            <h1 className="text-xl font-semibold">
-              TC Applicator
-            </h1>
-
-            <p className="text-sm text-slate-500">
-              Add OEM engineering record
-            </p>
+            <h1 className="text-xl font-semibold">TC Applicator</h1>
+            <p className="text-sm text-slate-500">Add OEM engineering record</p>
           </div>
 
           <Link
@@ -220,18 +145,12 @@ export default function NewOemPartPage() {
         </div>
       </header>
 
-      <form
-        onSubmit={handleSubmit}
-        className="mx-auto max-w-7xl px-6 py-6"
-      >
+      <form onSubmit={handleSubmit} className="mx-auto max-w-7xl px-6 py-6">
         <div className="mb-6">
-          <h2 className="text-2xl font-semibold">
-            Add OEM Part
-          </h2>
-
+          <h2 className="text-2xl font-semibold">Add OEM Part</h2>
           <p className="mt-1 text-sm text-slate-600">
-            Create a new engineering record for a brand-new
-            OEM-specification cutting edge.
+            Create a new engineering record for a brand-new OEM-specification
+            cutting edge.
           </p>
         </div>
 
@@ -252,7 +171,6 @@ export default function NewOemPartPage() {
                   placeholder="Example: 1099212"
                   required
                 />
-
                 <TextField
                   label="Manufacturer"
                   value={manufacturer}
@@ -260,7 +178,6 @@ export default function NewOemPartPage() {
                   placeholder="Example: Caterpillar"
                   required
                 />
-
                 <div className="md:col-span-2">
                   <TextField
                     label="Description"
@@ -270,22 +187,16 @@ export default function NewOemPartPage() {
                     required
                   />
                 </div>
-
                 <SelectField
                   label="Part Category"
                   value={partCategory}
-                  onChange={(value) =>
-                    setPartCategory(value as PartCategory)
-                  }
+                  onChange={setPartCategory}
                   options={PART_CATEGORIES}
                 />
-
                 <SelectField
                   label="Profile Family"
                   value={profileFamily}
-                  onChange={(value) =>
-                    setProfileFamily(value as ProfileFamily)
-                  }
+                  onChange={setProfileFamily}
                   options={PROFILE_FAMILIES}
                 />
               </div>
@@ -293,91 +204,33 @@ export default function NewOemPartPage() {
 
             <Section title="OEM Dimensions">
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-                <NumberField
-                  label="Length"
-                  value={lengthMm}
-                  onChange={setLengthMm}
-                  suffix="mm"
-                />
-
-                <NumberField
-                  label="Width"
-                  value={widthMm}
-                  onChange={setWidthMm}
-                  suffix="mm"
-                />
-
-                <NumberField
-                  label="Thickness"
-                  value={thicknessMm}
-                  onChange={setThicknessMm}
-                  suffix="mm"
-                  step={0.1}
-                />
-
-                <NumberField
-                  label="Bolt Holes"
-                  value={holeCount}
-                  onChange={setHoleCount}
-                />
-
-                <NumberField
-                  label="Hole Diameter"
-                  value={holeDiameterMm}
-                  onChange={setHoleDiameterMm}
-                  suffix="mm"
-                  step={0.1}
-                />
+                <NumberField label="Length" value={lengthMm} onChange={setLengthMm} suffix="mm" />
+                <NumberField label="Width" value={widthMm} onChange={setWidthMm} suffix="mm" />
+                <NumberField label="Thickness" value={thicknessMm} onChange={setThicknessMm} suffix="mm" step={0.1} />
+                <NumberField label="Bolt Holes" value={holeCount} onChange={setHoleCount} />
+                <NumberField label="Hole Diameter" value={holeDiameterMm} onChange={setHoleDiameterMm} suffix="mm" step={0.1} />
               </div>
             </Section>
 
             <Section title="Compatible Machines">
               <label className="block">
-                <span className="mb-1 block text-sm font-medium">
-                  Machine Models
-                </span>
-
+                <span className="mb-1 block text-sm font-medium">Machine Models</span>
                 <textarea
                   value={compatibleMachinesText}
-                  onChange={(event) =>
-                    setCompatibleMachinesText(
-                      event.target.value
-                    )
-                  }
+                  onChange={(e) => setCompatibleMachinesText(e.target.value)}
                   rows={4}
                   className="w-full rounded border border-slate-300 px-3 py-2"
-                  placeholder={
-                    "Enter one model per line or separate with commas.\nExample:\nCAT 980\nCAT 980G\nCAT 980H"
-                  }
+                  placeholder={"Enter one model per line or separate with commas.\nExample:\nCAT 980\nCAT 980G\nCAT 980H"}
                 />
               </label>
             </Section>
 
             <Section title="Standard Coating Pattern">
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <NumberField
-                  label="Bevel Runs per Side"
-                  value={bevelRunsPerSide}
-                  onChange={setBevelRunsPerSide}
-                />
-
-                <NumberField
-                  label="Leading Edge Runs per Side"
-                  value={leadingEdgeRunsPerSide}
-                  onChange={setLeadingEdgeRunsPerSide}
-                />
-
-                <NumberField
-                  label="Bottom Face Runs per Side"
-                  value={bottomFaceRunsPerSide}
-                  onChange={setBottomFaceRunsPerSide}
-                />
-
-                <NumberField
-                  label="Eyebrows per Hole"
-                  value={eyebrowsPerHole}
-                  onChange={setEyebrowsPerHole}
-                />
+                <NumberField label="Bevel Runs per Side" value={bevelRunsPerSide} onChange={setBevelRunsPerSide} />
+                <NumberField label="Leading Edge Runs per Side" value={leadingEdgeRunsPerSide} onChange={setLeadingEdgeRunsPerSide} />
+                <NumberField label="Bottom Face Runs per Side" value={bottomFaceRunsPerSide} onChange={setBottomFaceRunsPerSide} />
+                <NumberField label="Eyebrows per Hole" value={eyebrowsPerHole} onChange={setEyebrowsPerHole} />
               </div>
             </Section>
 
@@ -386,34 +239,17 @@ export default function NewOemPartPage() {
                 <SelectField
                   label="Engineering Status"
                   value={engineeringStatus}
-                  onChange={(value) =>
-                    setEngineeringStatus(
-                      value as OemPart["engineeringStatus"]
-                    )
-                  }
-                  options={[
-                    "Draft",
-                    "Pending Verification",
-                    "Verified",
-                  ]}
+                  onChange={(value) => setEngineeringStatus(value as EngineeringStatus)}
+                  options={["Draft", "Pending Verification", "Verified"]}
                 />
-
-                <ReadOnlyField
-                  label="Condition Requirement"
-                  value="New OEM Specification Only"
-                />
+                <ReadOnlyField label="Condition Requirement" value="New OEM Specification Only" />
               </div>
 
               <label className="mt-4 block">
-                <span className="mb-1 block text-sm font-medium">
-                  Engineering Notes
-                </span>
-
+                <span className="mb-1 block text-sm font-medium">Engineering Notes</span>
                 <textarea
                   value={notes}
-                  onChange={(event) =>
-                    setNotes(event.target.value)
-                  }
+                  onChange={(e) => setNotes(e.target.value)}
                   rows={5}
                   className="w-full rounded border border-slate-300 px-3 py-2"
                   placeholder="Record measurement sources, drawing references or verification notes."
@@ -424,54 +260,20 @@ export default function NewOemPartPage() {
 
           <aside className="h-fit rounded-md border border-slate-300 bg-white xl:sticky xl:top-6">
             <div className="border-b border-slate-300 px-5 py-4">
-              <h3 className="font-semibold">
-                Part Preview
-              </h3>
+              <h3 className="font-semibold">Part Preview</h3>
             </div>
 
             <div className="space-y-4 p-5">
-              <PreviewRow
-                label="OEM Number"
-                value={partPreview.oemPartNumber || "—"}
-              />
-
-              <PreviewRow
-                label="Manufacturer"
-                value={partPreview.manufacturer || "—"}
-              />
-
-              <PreviewRow
-                label="Description"
-                value={partPreview.description || "—"}
-              />
-
-              <PreviewRow
-                label="Category"
-                value={partPreview.partCategory}
-              />
-
-              <PreviewRow
-                label="Profile"
-                value={partPreview.profileFamily}
-              />
-
-              <PreviewRow
-                label="Dimensions"
-                value={`${lengthMm} × ${widthMm} × ${thicknessMm} mm`}
-              />
-
-              <PreviewRow
-                label="Holes"
-                value={`${holeCount} × Ø${holeDiameterMm} mm`}
-              />
-
+              <PreviewRow label="OEM Number" value={oemPartNumber || "—"} />
+              <PreviewRow label="Manufacturer" value={manufacturer || "—"} />
+              <PreviewRow label="Description" value={description || "—"} />
+              <PreviewRow label="Category" value={partCategory} />
+              <PreviewRow label="Profile" value={profileFamily} />
+              <PreviewRow label="Dimensions" value={`${lengthMm} × ${widthMm} × ${thicknessMm} mm`} />
+              <PreviewRow label="Holes" value={`${holeCount} × Ø${holeDiameterMm} mm`} />
               <PreviewRow
                 label="Machines"
-                value={
-                  compatibleMachines.length > 0
-                    ? compatibleMachines.join(", ")
-                    : "—"
-                }
+                value={compatibleMachines.length > 0 ? compatibleMachines.join(", ") : "—"}
               />
 
               <div className="border-t border-slate-200 pt-4">
@@ -480,16 +282,15 @@ export default function NewOemPartPage() {
 
               <div className="rounded border border-slate-200 bg-slate-50 p-4 text-sm">
                 <strong>Condition:</strong>
-                <div className="mt-1">
-                  New OEM Specification Only
-                </div>
+                <div className="mt-1">New OEM Specification Only</div>
               </div>
 
               <button
                 type="submit"
-                className="w-full rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+                disabled={isSaving}
+                className="w-full rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
               >
-                Save OEM Part
+                {isSaving ? "Saving..." : "Save OEM Part"}
               </button>
 
               <Link
@@ -506,48 +307,26 @@ export default function NewOemPartPage() {
   );
 }
 
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="rounded-md border border-slate-300 bg-white">
       <div className="border-b border-slate-300 px-5 py-4">
         <h3 className="font-semibold">{title}</h3>
       </div>
-
       <div className="p-5">{children}</div>
     </section>
   );
 }
 
-function TextField({
-  label,
-  value,
-  onChange,
-  placeholder,
-  required = false,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  required?: boolean;
+function TextField({ label, value, onChange, placeholder, required = false }: {
+  label: string; value: string; onChange: (v: string) => void; placeholder?: string; required?: boolean;
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-sm font-medium">
-        {label}
-      </span>
-
+      <span className="mb-1 block text-sm font-medium">{label}</span>
       <input
         value={value}
-        onChange={(event) =>
-          onChange(event.target.value)
-        }
+        onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         required={required}
         className="w-full rounded border border-slate-300 px-3 py-2"
@@ -556,75 +335,42 @@ function TextField({
   );
 }
 
-function SelectField({
-  label,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: string[];
+function SelectField({ label, value, onChange, options }: {
+  label: string; value: string; onChange: (v: string) => void; options: string[];
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-sm font-medium">
-        {label}
-      </span>
-
+      <span className="mb-1 block text-sm font-medium">{label}</span>
       <select
         value={value}
-        onChange={(event) =>
-          onChange(event.target.value)
-        }
+        onChange={(e) => onChange(e.target.value)}
         className="w-full rounded border border-slate-300 px-3 py-2"
       >
         {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
+          <option key={option} value={option}>{option}</option>
         ))}
       </select>
     </label>
   );
 }
 
-function NumberField({
-  label,
-  value,
-  onChange,
-  suffix,
-  step = 1,
-}: {
-  label: string;
-  value: number;
-  onChange: (value: number) => void;
-  suffix?: string;
-  step?: number;
+function NumberField({ label, value, onChange, suffix, step = 1 }: {
+  label: string; value: number; onChange: (v: number) => void; suffix?: string; step?: number;
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-sm font-medium">
-        {label}
-      </span>
-
+      <span className="mb-1 block text-sm font-medium">{label}</span>
       <div className="flex">
         <input
           type="number"
           min="0"
           step={step}
           value={value || ""}
-          onChange={(event) =>
-            onChange(Number(event.target.value) || 0)
-          }
-          className={
-            suffix
-              ? "min-w-0 flex-1 rounded-l border border-slate-300 px-3 py-2"
-              : "min-w-0 flex-1 rounded border border-slate-300 px-3 py-2"
-          }
+          onChange={(e) => onChange(Number(e.target.value) || 0)}
+          className={suffix
+            ? "min-w-0 flex-1 rounded-l border border-slate-300 px-3 py-2"
+            : "min-w-0 flex-1 rounded border border-slate-300 px-3 py-2"}
         />
-
         {suffix && (
           <span className="flex items-center rounded-r border border-l-0 border-slate-300 bg-slate-50 px-3 text-sm text-slate-600">
             {suffix}
@@ -635,51 +381,25 @@ function NumberField({
   );
 }
 
-function ReadOnlyField({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
+function ReadOnlyField({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="mb-1 text-sm font-medium">
-        {label}
-      </div>
-
-      <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
-        {value}
-      </div>
+      <div className="mb-1 text-sm font-medium">{label}</div>
+      <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm">{value}</div>
     </div>
   );
 }
 
-function PreviewRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
+function PreviewRow({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
-        {label}
-      </div>
-
-      <div className="mt-1 text-sm font-medium">
-        {value}
-      </div>
+      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</div>
+      <div className="mt-1 text-sm font-medium">{value}</div>
     </div>
   );
 }
 
-function StatusBadge({
-  status,
-}: {
-  status: OemPart["engineeringStatus"];
-}) {
+function StatusBadge({ status }: { status: EngineeringStatus }) {
   const classes =
     status === "Verified"
       ? "border-emerald-300 bg-emerald-50 text-emerald-800"
@@ -688,9 +408,7 @@ function StatusBadge({
         : "border-slate-300 bg-slate-100 text-slate-700";
 
   return (
-    <span
-      className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${classes}`}
-    >
+    <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${classes}`}>
       {status}
     </span>
   );
