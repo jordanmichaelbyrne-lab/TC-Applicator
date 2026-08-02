@@ -11,6 +11,7 @@ export type EstimateRow = {
   id: string;
   company_id: string;
   oem_part_id: string | null;
+  oem_part_pattern_id: string | null;
   oem_part_number: string;
   manufacturer: string | null;
   machine_type: string | null;
@@ -48,6 +49,7 @@ export type EstimateRow = {
 
 export type CreateEstimateInput = {
   oemPartId?: string | null;
+  oemPartPatternId?: string | null;
   oemPartNumber: string;
   manufacturer?: string;
   machineType?: string;
@@ -78,6 +80,7 @@ function mapInputToRow(input: CreateEstimateInput, companyId: string, userId: st
   return {
     company_id: companyId,
     oem_part_id: input.oemPartId ?? null,
+    oem_part_pattern_id: input.oemPartPatternId ?? null,
     oem_part_number: input.oemPartNumber.trim(),
     manufacturer: input.manufacturer?.trim() || null,
     machine_type: input.machineType?.trim() || null,
@@ -264,6 +267,33 @@ export async function rejectEstimate(estimateId: string, reason: string) {
     .single();
 
   if (error) throw new Error(`Unable to reject estimate: ${error.message}`);
+  return data as EstimateRow;
+}
+
+/**
+ * Links an approved estimate to its (possibly newly-created) OEM part
+ * and coating pattern, so future estimates for the same part/pattern
+ * combination find real catalog matches.
+ */
+export async function linkEstimateToOemPartAndPattern(
+  estimateId: string,
+  oemPartId: string,
+  oemPartPatternId: string
+) {
+  const { supabase, user } = await getCurrentUserAndCompany();
+
+  const { data, error } = await supabase
+    .from("estimates")
+    .update({
+      oem_part_id: oemPartId,
+      oem_part_pattern_id: oemPartPatternId,
+      updated_by: user.id,
+    })
+    .eq("id", estimateId)
+    .select("*")
+    .single();
+
+  if (error) throw new Error(`Unable to link estimate: ${error.message}`);
   return data as EstimateRow;
 }
 

@@ -63,6 +63,27 @@ export async function getOemPart(partId: string) {
     : null;
 }
 
+export async function findOemPartByManufacturerAndNumber(
+  manufacturer: string,
+  oemPartNumber: string
+) {
+  const { supabase, companyId } = await getCurrentUserAndCompany();
+
+  const { data, error } = await supabase
+    .from("oem_parts")
+    .select("*")
+    .eq("company_id", companyId)
+    .eq("manufacturer", manufacturer)
+    .eq("oem_part_number", oemPartNumber)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Unable to look up OEM part: ${error.message}`);
+  }
+
+  return data ? mapOemPartRow(data as OemPartRow) : null;
+}
+
 export async function searchOemParts(
   searchTerm: string
 ) {

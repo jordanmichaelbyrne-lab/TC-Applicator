@@ -1,3 +1,4 @@
+import Link from "next/link";
 import CoatingLayout from "@/components/drawing/CoatingLayout";
 import {
   listPendingApprovals,
@@ -186,6 +187,13 @@ export default async function ApprovalsPage({
                   Approve
                 </button>
               </form>
+
+              <Link
+                href={`/estimates/new?estimateId=${estimate.id}`}
+                className="rounded border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium hover:bg-slate-50"
+              >
+                Edit
+              </Link>
 
               <form
                 action={rejectEstimateAction}

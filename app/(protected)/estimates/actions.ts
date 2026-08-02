@@ -8,9 +8,20 @@ import {
   uploadEstimatePhoto,
   approveEstimate,
   rejectEstimate,
+  getEstimate,
+  linkEstimateToOemPartAndPattern,
   type CreateEstimateInput,
 } from "@/app/lib/repositories/estimates";
-import { getOemParts, type OemPart } from "@/app/lib/repositories/oemParts";
+import {
+  getOemParts,
+  createOemPart,
+  findOemPartByManufacturerAndNumber,
+  type OemPart,
+} from "@/app/lib/repositories/oemParts";
+import {
+  listPatternsForPart,
+  createPattern,
+} from "@/app/lib/repositories/oemPartPatterns";
 import { getCompanySettings, type CompanySettings } from "@/app/lib/settings/companySettings";
 
 type ActionResult<T> =
@@ -90,8 +101,27 @@ export async function getOemPartsAction(): Promise<PartsActionResult> {
   }
 }
 
-// ---- Company settings (carbide rate, run width, eyebrow length), for
-// the New Estimate page's live calculator defaults ----
+// ---- Coating patterns for a matched OEM part ----
+
+type PatternsActionResult =
+  | { success: true; patterns: Awaited<ReturnType<typeof listPatternsForPart>> }
+  | { success: false; message: string };
+
+export async function getOemPartPatternsAction(
+  oemPartId: string
+): Promise<PatternsActionResult> {
+  try {
+    const patterns = await listPatternsForPart(oemPartId);
+    return { success: true, patterns };
+  } catch (error) {
+    return {
+      success: false,
+      message: toErrorMessage(error, "Unable to load coating patterns."),
+    };
+  }
+}
+
+// ---- Company settings (carbide rate, run width, eyebrow length) ----
 
 type SettingsActionResult =
   | { success: true; settings: CompanySettings }
@@ -109,6 +139,26 @@ export async function getCompanySettingsAction(): Promise<SettingsActionResult> 
   }
 }
 
+// ---- Load a single existing estimate, for the edit-before-approve flow ----
+
+type GetEstimateActionResult =
+  | { success: true; estimate: Awaited<ReturnType<typeof getEstimate>> }
+  | { success: false; message: string };
+
+export async function getEstimateAction(
+  estimateId: string
+): Promise<GetEstimateActionResult> {
+  try {
+    const estimate = await getEstimate(estimateId);
+    return { success: true, estimate };
+  } catch (error) {
+    return {
+      success: false,
+      message: toErrorMessage(error, "Unable to load estimate."),
+    };
+  }
+}
+
 // ---- Form-based actions for the /approvals page ----
 
 export async function approveEstimateAction(formData: FormData) {
@@ -118,14 +168,82 @@ export async function approveEstimateAction(formData: FormData) {
     redirect("/approvals?error=Missing%20estimate%20ID.");
   }
 
+  let approved: Awaited<ReturnType<typeof approveEstimate>> | undefined;
+
   try {
-    await approveEstimate(estimateId);
+    approved = await approveEstimate(estimateId);
   } catch (error) {
     const message = toErrorMessage(error, "Unable to approve estimate.");
     redirect(`/approvals?error=${encodeURIComponent(message)}`);
   }
 
+  if (approved && !approved.oem_part_pattern_id) {
+    try {
+      let oemPartId = approved.oem_part_id;
+
+      if (!oemPartId) {
+        const existingPart = await findOemPartByManufacturerAndNumber(
+          approved.manufacturer || "",
+          approved.oem_part_number
+        );
+
+        if (existingPart) {
+          oemPartId = existingPart.id;
+        } else {
+          const newPart = await createOemPart({
+            oemPartNumber: approved.oem_part_number,
+            manufacturer: approved.manufacturer || "",
+            description: approved.edge_type || approved.oem_part_number,
+            partCategory: approved.edge_type || "",
+            profileFamily: "Reverse Double Bevel",
+            lengthMm: approved.length_mm,
+            widthMm: approved.width_mm,
+            thicknessMm: approved.thickness_mm,
+            holeCount: approved.hole_count,
+            holeDiameterMm: approved.hole_diameter_mm ?? 0,
+            compatibleMachines: approved.machine_model
+              ? approved.machine_model.split(",").map((m) => m.trim()).filter(Boolean)
+              : [],
+            standardPattern: {
+              bevelRunsPerSide: approved.bevel_runs_per_side,
+              leadingEdgeRunsPerSide: approved.leading_edge_runs_per_side,
+              bottomFaceRunsPerSide: approved.bottom_face_runs_per_side,
+              eyebrowsPerHole:
+                approved.eyebrow_type === "short" ? approved.short_eyebrows_per_hole : 0,
+            },
+            engineeringStatus: "Pending Verification",
+            conditionRequirement: "New OEM Specification Only",
+            notes:
+              "Auto-created from an approved estimate. Please review the category, profile family and machine list.",
+          });
+          oemPartId = newPart.id;
+        }
+      }
+
+      if (!oemPartId) {
+        throw new Error("Unable to resolve OEM part id.");
+      }
+
+      const newPattern = await createPattern({
+        oemPartId,
+        bevelRunsPerSide: approved.bevel_runs_per_side,
+        leadingEdgeRunsPerSide: approved.leading_edge_runs_per_side,
+        bottomFaceRunsPerSide: approved.bottom_face_runs_per_side,
+        eyebrowType: approved.eyebrow_type,
+        shortEyebrowsPerHole: approved.short_eyebrows_per_hole,
+      });
+
+      await linkEstimateToOemPartAndPattern(estimateId, oemPartId, newPattern.id);
+    } catch (error) {
+      console.error(
+        "[approveEstimateAction] failed to auto-save OEM part/pattern:",
+        error
+      );
+    }
+  }
+
   revalidatePath("/approvals");
+  revalidatePath("/oem-parts");
   redirect("/approvals?success=Estimate%20approved.");
 }
 

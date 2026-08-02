@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import CoatingLayout from "@/components/drawing/CoatingLayout";
 import {
   saveDraftAction,
   submitForApprovalAction,
   uploadEstimatePhotoAction,
   getOemPartsAction,
+  getEstimateAction,
 } from "@/app/(protected)/estimates/actions";
 import type { CreateEstimateInput, EstimateStatus } from "@/app/lib/repositories/estimates";
 import type { OemPart } from "@/app/lib/repositories/oemParts";
@@ -66,6 +68,8 @@ function getMachineType(part: OemPart) {
 
 export default function NewEstimatePage() {
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchParams = useSearchParams();
+  const editEstimateId = searchParams.get("estimateId");
 
   const [partSearch, setPartSearch] = useState("");
   const [selectedPartId, setSelectedPartId] = useState<string | null>(null);
@@ -98,8 +102,6 @@ export default function NewEstimatePage() {
 
   const [sellRatePerCm2, setSellRatePerCm2] = useState(0);
 
-  // Database-backed estimate state — set once the estimate has been
-  // saved/submitted at least once, so later saves update the same row.
   const [oemPartId, setOemPartId] = useState<string | null>(null);
   const [estimateId, setEstimateId] = useState<string | null>(null);
   const [estimateStatus, setEstimateStatus] = useState<EstimateStatus | null>(null);
@@ -111,8 +113,15 @@ export default function NewEstimatePage() {
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [photoPath, setPhotoPath] = useState<string | null>(null);
 
+  const [isLoadingExistingEstimate, setIsLoadingExistingEstimate] = useState(
+    Boolean(editEstimateId)
+  );
+  const [loadExistingError, setLoadExistingError] = useState("");
+
   useEffect(() => {
-    searchInputRef.current?.focus();
+    if (!editEstimateId) {
+      searchInputRef.current?.focus();
+    }
 
     let cancelled = false;
 
@@ -135,7 +144,72 @@ export default function NewEstimatePage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [editEstimateId]);
+
+  // If ?estimateId= is present, load that existing estimate (draft or
+  // pending approval) and prefill every field from it, so an admin can
+  // review/fix a submission before approving instead of only having
+  // Approve/Reject to choose from.
+  useEffect(() => {
+    if (!editEstimateId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      const result = await getEstimateAction(editEstimateId);
+
+      if (cancelled) {
+        return;
+      }
+
+      if (!result.success || !result.estimate) {
+        setLoadExistingError(
+          !result.success ? result.message : "That estimate could not be found."
+        );
+        setIsLoadingExistingEstimate(false);
+        return;
+      }
+
+      const estimate = result.estimate;
+
+      setOemPartId(estimate.oem_part_id);
+      setPartSearch(estimate.oem_part_number);
+      setOemPartNumber(estimate.oem_part_number);
+      setManufacturer(estimate.manufacturer ?? "");
+      setMachineType(estimate.machine_type ?? "");
+      setMachineModel(estimate.machine_model ?? "");
+      setEdgeType(estimate.edge_type ?? "");
+      setCustomerName(estimate.customer_name ?? "");
+      setJobReference(estimate.job_reference ?? "");
+
+      setLengthMm(estimate.length_mm);
+      setWidthMm(estimate.width_mm);
+      setThicknessMm(estimate.thickness_mm);
+      setHoleCount(estimate.hole_count);
+      setHoleDiameterMm(estimate.hole_diameter_mm ?? 26);
+
+      setEdgeProfile(estimate.edge_profile);
+      setTopBevelRuns(estimate.bevel_runs_per_side);
+      setLeadingEdgeRuns(estimate.leading_edge_runs_per_side);
+      setBottomFaceRuns(estimate.bottom_face_runs_per_side);
+      setEyebrowType(estimate.eyebrow_type);
+      setShortEyebrowsPerHole(estimate.short_eyebrows_per_hole);
+
+      setSellRatePerCm2(estimate.sell_rate_per_cm2 ?? 0);
+
+      setEstimateId(estimate.id);
+      setEstimateStatus(estimate.status);
+      setPhotoPath(estimate.photo_url);
+
+      setIsLoadingExistingEstimate(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [editEstimateId]);
 
   const matchingParts = useMemo(() => {
     if (!partSearch.trim()) {
@@ -158,27 +232,25 @@ export default function NewEstimatePage() {
   }, [partSearch]);
 
   // A search with text, no selected match, and no results at all means
-  // this is a brand-new part not yet in the database.
+  // this is a brand-new part not yet in the database. When editing an
+  // existing estimate, always show the form immediately regardless of
+  // search state.
   const isNewPartMode =
     Boolean(partSearch.trim()) &&
     !selectedPartId &&
     matchingParts.length === 0;
 
   const partIsSelected = Boolean(selectedPart);
-  const showForm = partIsSelected || isNewPartMode;
+  const showForm = Boolean(editEstimateId) || partIsSelected || isNewPartMode;
 
-  // Keep the OEM part number in sync with whatever was typed while in
-  // new-part mode, so it flows through to the drawing / draft / print.
   useEffect(() => {
-    if (isNewPartMode) {
+    if (isNewPartMode && !editEstimateId) {
       setOemPartNumber(partSearch.trim());
     }
-  }, [isNewPartMode, partSearch]);
+  }, [isNewPartMode, partSearch, editEstimateId]);
 
   function loadPart(part: OemPart) {
     setSelectedPartId(part.id);
-    // part.id is now a real Supabase UUID (fetched via getOemPartsAction),
-    // so it's safe to use directly as the estimate's oem_part_id.
     setOemPartId(part.id);
     setPartSearch(part.oemPartNumber);
 
@@ -195,12 +267,8 @@ export default function NewEstimatePage() {
     setHoleDiameterMm(part.holeDiameterMm);
 
     setTopBevelRuns(part.standardPattern.bevelRunsPerSide);
-    setLeadingEdgeRuns(
-      part.standardPattern.leadingEdgeRunsPerSide
-    );
-    setBottomFaceRuns(
-      part.standardPattern.bottomFaceRunsPerSide
-    );
+    setLeadingEdgeRuns(part.standardPattern.leadingEdgeRunsPerSide);
+    setBottomFaceRuns(part.standardPattern.bottomFaceRunsPerSide);
     if (part.standardPattern.eyebrowsPerHole > 0) {
       setEyebrowType("short");
       setShortEyebrowsPerHole(part.standardPattern.eyebrowsPerHole);
@@ -209,11 +277,6 @@ export default function NewEstimatePage() {
       setShortEyebrowsPerHole(2);
     }
 
-    // NOTE: OemPart.profileFamily doesn't cleanly map to an edge shape yet
-    // (it currently mixes shape descriptors like "Reverse Double Bevel"
-    // with part-type descriptors like "Dozer End Bit"). Until that schema
-    // is cleaned up, edge profile isn't auto-set from the matched part —
-    // confirm/adjust it manually below.
     setEdgeProfile("double-bevel");
 
     setSaveMessage("");
@@ -301,8 +364,7 @@ export default function NewEstimatePage() {
     const leadingEdgeRunQuantity = leadingEdgeRuns * profileMultiplier;
     const bottomFaceRunQuantity = bottomFaceRuns * 2;
 
-    const fullEyebrowRunQuantity =
-      eyebrowType === "full" ? 2 : 0;
+    const fullEyebrowRunQuantity = eyebrowType === "full" ? 2 : 0;
 
     const totalFullLengthRuns =
       bevelRunQuantity +
@@ -314,20 +376,14 @@ export default function NewEstimatePage() {
       lengthMm * DEFAULT_RUN_WIDTH_MM * totalFullLengthRuns;
 
     const shortEyebrowQuantity =
-      eyebrowType === "short"
-        ? holeCount * shortEyebrowsPerHole
-        : 0;
+      eyebrowType === "short" ? holeCount * shortEyebrowsPerHole : 0;
 
     const shortEyebrowAreaMm2 =
-      shortEyebrowQuantity *
-      DEFAULT_EYEBROW_LENGTH_MM *
-      DEFAULT_RUN_WIDTH_MM;
+      shortEyebrowQuantity * DEFAULT_EYEBROW_LENGTH_MM * DEFAULT_RUN_WIDTH_MM;
 
-    const totalAreaCm2 =
-      (fullLengthAreaMm2 + shortEyebrowAreaMm2) / 100;
+    const totalAreaCm2 = (fullLengthAreaMm2 + shortEyebrowAreaMm2) / 100;
 
-    const totalCarbideCost =
-      totalAreaCm2 * CARBIDE_COST_RATE_PER_CM2;
+    const totalCarbideCost = totalAreaCm2 * CARBIDE_COST_RATE_PER_CM2;
 
     const totalSellPrice = totalAreaCm2 * sellRatePerCm2;
     const grossProfit = totalSellPrice - totalCarbideCost;
@@ -435,7 +491,11 @@ export default function NewEstimatePage() {
 
     setEstimateId(result.estimate.id);
     setEstimateStatus(result.estimate.status);
-    setSaveMessage("Submitted for admin approval.");
+    setSaveMessage(
+      editEstimateId
+        ? "Changes saved. Still pending admin approval."
+        : "Submitted for admin approval."
+    );
   }
 
   async function handleUploadPhoto() {
@@ -463,21 +523,42 @@ export default function NewEstimatePage() {
     setSaveMessage("Photo attached.");
   }
 
+  if (editEstimateId && isLoadingExistingEstimate) {
+    return (
+      <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6">
+        <div className="rounded-lg border border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
+          Loading estimate…
+        </div>
+      </div>
+    );
+  }
+
+  if (editEstimateId && loadExistingError) {
+    return (
+      <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6">
+        <div className="rounded-lg border border-red-300 bg-red-50 p-8 text-center text-sm text-red-800">
+          {loadExistingError}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6">
         <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h2 className="text-2xl font-semibold">
-              New Estimate
+              {editEstimateId ? "Edit Estimate" : "New Estimate"}
             </h2>
 
             <p className="mt-1 text-sm text-slate-600">
-              Search a part, confirm the coating layout and enter
-              the price.
+              {editEstimateId
+                ? "Review and fix this estimate before approving."
+                : "Search a part, confirm the coating layout and enter the price."}
             </p>
           </div>
 
-          {showForm && (
+          {showForm && !editEstimateId && (
             <button
               type="button"
               onClick={clearPart}
@@ -488,85 +569,87 @@ export default function NewEstimatePage() {
           )}
         </div>
 
-        <section className="relative mb-5 rounded-lg border border-slate-300 bg-white p-5 shadow-sm">
-          <label className="block">
-            <span className="mb-2 block text-sm font-semibold">
-              OEM part
-            </span>
+        {!editEstimateId && (
+          <section className="relative mb-5 rounded-lg border border-slate-300 bg-white p-5 shadow-sm">
+            <label className="block">
+              <span className="mb-2 block text-sm font-semibold">
+                OEM part
+              </span>
 
-            <input
-              ref={searchInputRef}
-              value={partSearch}
-              onChange={(event) => {
-                setPartSearch(event.target.value);
-                setSelectedPartId(null);
-                setSaveMessage("");
-              }}
-              onKeyDown={handleSearchKeyDown}
-              className="w-full rounded-md border border-slate-300 px-4 py-3 text-base outline-none transition focus:border-slate-700 focus:ring-2 focus:ring-slate-200"
-              placeholder="Search OEM number, machine or description"
-              autoComplete="off"
-            />
-          </label>
+              <input
+                ref={searchInputRef}
+                value={partSearch}
+                onChange={(event) => {
+                  setPartSearch(event.target.value);
+                  setSelectedPartId(null);
+                  setSaveMessage("");
+                }}
+                onKeyDown={handleSearchKeyDown}
+                className="w-full rounded-md border border-slate-300 px-4 py-3 text-base outline-none transition focus:border-slate-700 focus:ring-2 focus:ring-slate-200"
+                placeholder="Search OEM number, machine or description"
+                autoComplete="off"
+              />
+            </label>
 
-          {partSearch.trim() &&
-            !selectedPartId &&
-            matchingParts.length > 0 && (
-              <div className="absolute left-5 right-5 top-[88px] z-20 overflow-hidden rounded-md border border-slate-300 bg-white shadow-xl">
-                {matchingParts.map((part, index) => (
-                  <button
-                    key={part.id}
-                    type="button"
-                    onMouseEnter={() =>
-                      setHighlightedResult(index)
-                    }
-                    onClick={() => loadPart(part)}
-                    className={`flex w-full items-start justify-between gap-4 border-b border-slate-200 px-4 py-3 text-left last:border-b-0 ${
-                      index === highlightedResult
-                        ? "bg-slate-100"
-                        : "hover:bg-slate-50"
-                    }`}
-                  >
-                    <div>
-                      <div className="font-semibold">
-                        {part.oemPartNumber}
+            {partSearch.trim() &&
+              !selectedPartId &&
+              matchingParts.length > 0 && (
+                <div className="absolute left-5 right-5 top-[88px] z-20 overflow-hidden rounded-md border border-slate-300 bg-white shadow-xl">
+                  {matchingParts.map((part, index) => (
+                    <button
+                      key={part.id}
+                      type="button"
+                      onMouseEnter={() =>
+                        setHighlightedResult(index)
+                      }
+                      onClick={() => loadPart(part)}
+                      className={`flex w-full items-start justify-between gap-4 border-b border-slate-200 px-4 py-3 text-left last:border-b-0 ${
+                        index === highlightedResult
+                          ? "bg-slate-100"
+                          : "hover:bg-slate-50"
+                      }`}
+                    >
+                      <div>
+                        <div className="font-semibold">
+                          {part.oemPartNumber}
+                        </div>
+
+                        <div className="mt-0.5 text-sm text-slate-700">
+                          {part.manufacturer} · {part.description}
+                        </div>
+
+                        <div className="mt-1 text-xs text-slate-500">
+                          {part.compatibleMachines.join(", ")}
+                        </div>
                       </div>
 
-                      <div className="mt-0.5 text-sm text-slate-700">
-                        {part.manufacturer} · {part.description}
+                      <div className="shrink-0 text-right text-xs text-slate-500">
+                        {part.lengthMm} × {part.widthMm} ×{" "}
+                        {part.thicknessMm} mm
                       </div>
+                    </button>
+                  ))}
+                </div>
+              )}
 
-                      <div className="mt-1 text-xs text-slate-500">
-                        {part.compatibleMachines.join(", ")}
-                      </div>
-                    </div>
-
-                    <div className="shrink-0 text-right text-xs text-slate-500">
-                      {part.lengthMm} × {part.widthMm} ×{" "}
-                      {part.thicknessMm} mm
-                    </div>
-                  </button>
-                ))}
-              </div>
+            {isNewPartMode && (
+              <p className="mt-3 text-sm text-amber-700">
+                No matching OEM part was found — enter the dimensions
+                and coating pattern below to create one.
+              </p>
             )}
 
-          {isNewPartMode && (
-            <p className="mt-3 text-sm text-amber-700">
-              No matching OEM part was found — enter the dimensions
-              and coating pattern below to create one.
-            </p>
-          )}
+            {isLoadingParts && (
+              <p className="mt-3 text-sm text-slate-500">
+                Loading OEM part catalog…
+              </p>
+            )}
 
-          {isLoadingParts && (
-            <p className="mt-3 text-sm text-slate-500">
-              Loading OEM part catalog…
-            </p>
-          )}
-
-          {partsLoadError && (
-            <p className="mt-3 text-sm text-red-700">{partsLoadError}</p>
-          )}
-        </section>
+            {partsLoadError && (
+              <p className="mt-3 text-sm text-red-700">{partsLoadError}</p>
+            )}
+          </section>
+        )}
 
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_440px]">
           <div className="space-y-5">
@@ -861,7 +944,11 @@ export default function NewEstimatePage() {
                   disabled={!showForm || isSaving || isSubmitting}
                   className="rounded bg-emerald-700 px-5 py-2.5 text-sm font-medium text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300"
                 >
-                  {isSubmitting ? "Submitting…" : "Submit for Approval"}
+                  {isSubmitting
+                    ? "Saving…"
+                    : editEstimateId
+                      ? "Save Changes"
+                      : "Submit for Approval"}
                 </button>
 
                 <button
@@ -1054,7 +1141,6 @@ function NumberField({
     </label>
   );
 }
-
 
 type ReadOnlyMoneyFieldProps = {
   label: string;
