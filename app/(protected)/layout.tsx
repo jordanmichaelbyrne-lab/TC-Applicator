@@ -102,6 +102,7 @@ export default async function ProtectedLayout({
 
   if (isAdmin) {
     navLinks.push({ href: "/team-requests", label: "Team Requests" });
+    navLinks.push({ href: "/settings/coating-defaults", label: "Coating Defaults" });
   }
 
   if (isPlatformAdmin) {
