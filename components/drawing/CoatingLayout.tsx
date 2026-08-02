@@ -41,6 +41,7 @@ export default function CoatingLayout({
   const safeHoleCount = Math.max(holeCount, 0);
   const safeWidth = Math.max(widthMm, 1);
   const safeThickness = Math.max(thicknessMm, 1);
+  const safeBottomFaceRuns = Math.max(bottomFaceRuns, 0);
 
   const frontX = 90;
   const frontY = 95;
@@ -211,22 +212,34 @@ export default function CoatingLayout({
           strokeWidth="2"
         />
 
-        <line
-          x1={frontX + endInset}
-          y1={frontY + 14}
-          x2={frontX + frontWidth - endInset}
-          y2={frontY + 14}
-          stroke={COATING_COLOUR}
-          strokeWidth="11"
-        />
-        <line
-          x1={frontX + endInset}
-          y1={frontY + frontHeight - 14}
-          x2={frontX + frontWidth - endInset}
-          y2={frontY + frontHeight - 14}
-          stroke={COATING_COLOUR}
-          strokeWidth="11"
-        />
+        {/* Bottom-face runs, plan view — one strip per run, stacking
+            inward from each long edge. Was previously two hardcoded
+            strips regardless of bottomFaceRuns; now scales properly,
+            including drawing nothing at 0. */}
+        {Array.from({ length: safeBottomFaceRuns }).map((_, index) => {
+          const offset = 14 + index * 13;
+
+          return (
+            <g key={`bottom-face-plan-${index}`}>
+              <line
+                x1={frontX + endInset}
+                y1={frontY + offset}
+                x2={frontX + frontWidth - endInset}
+                y2={frontY + offset}
+                stroke={COATING_COLOUR}
+                strokeWidth="11"
+              />
+              <line
+                x1={frontX + endInset}
+                y1={frontY + frontHeight - offset}
+                x2={frontX + frontWidth - endInset}
+                y2={frontY + frontHeight - offset}
+                stroke={COATING_COLOUR}
+                strokeWidth="11"
+              />
+            </g>
+          );
+        })}
 
         {eyebrowType === "full" && (
           <>

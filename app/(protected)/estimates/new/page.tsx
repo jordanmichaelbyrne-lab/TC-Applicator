@@ -8,12 +8,23 @@ import {
   submitForApprovalAction,
   uploadEstimatePhotoAction,
   getOemPartsAction,
+  getOemPartPatternsAction,
   getEstimateAction,
 } from "@/app/(protected)/estimates/actions";
 import type { CreateEstimateInput, EstimateStatus } from "@/app/lib/repositories/estimates";
 import type { OemPart } from "@/app/lib/repositories/oemParts";
 
 type EdgeProfile = "single-bevel" | "double-bevel" | "square-edge";
+type PatternOption = {
+  id: string;
+  patternNumber: number;
+  patternLabel: string;
+  bevelRunsPerSide: number;
+  leadingEdgeRunsPerSide: number;
+  bottomFaceRunsPerSide: number;
+  eyebrowType: "none" | "short" | "full";
+  shortEyebrowsPerHole: number;
+};
 
 const DEFAULT_RUN_WIDTH_MM = 25;
 const DEFAULT_EYEBROW_LENGTH_MM = 100;
@@ -94,15 +105,16 @@ export default function NewEstimatePage() {
   const [holeDiameterMm, setHoleDiameterMm] = useState(26);
 
   const [edgeProfile, setEdgeProfile] = useState<EdgeProfile>("double-bevel");
-  const [topBevelRuns, setTopBevelRuns] = useState(2);
-  const [leadingEdgeRuns, setLeadingEdgeRuns] = useState(1);
-  const [bottomFaceRuns, setBottomFaceRuns] = useState(2);
+  const [topBevelRuns, setTopBevelRuns] = useState(0);
+  const [leadingEdgeRuns, setLeadingEdgeRuns] = useState(0);
+  const [bottomFaceRuns, setBottomFaceRuns] = useState(0);
   const [eyebrowType, setEyebrowType] = useState<"none" | "short" | "full">("none");
   const [shortEyebrowsPerHole, setShortEyebrowsPerHole] = useState(2);
 
   const [sellRatePerCm2, setSellRatePerCm2] = useState(0);
 
   const [oemPartId, setOemPartId] = useState<string | null>(null);
+  const [oemPartPatternId, setOemPartPatternId] = useState<string | null>(null);
   const [estimateId, setEstimateId] = useState<string | null>(null);
   const [estimateStatus, setEstimateStatus] = useState<EstimateStatus | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -112,6 +124,14 @@ export default function NewEstimatePage() {
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [photoPath, setPhotoPath] = useState<string | null>(null);
+
+  // Coating pattern picker — patterns already saved against the
+  // currently selected OEM part, plus whether the user is entering a
+  // fresh pattern instead of picking a saved one.
+  const [patternOptions, setPatternOptions] = useState<PatternOption[]>([]);
+  const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
+  const [patternsLoadError, setPatternsLoadError] = useState("");
+  const [isCreatingNewPattern, setIsCreatingNewPattern] = useState(false);
 
   const [isLoadingExistingEstimate, setIsLoadingExistingEstimate] = useState(
     Boolean(editEstimateId)
@@ -175,6 +195,7 @@ export default function NewEstimatePage() {
       const estimate = result.estimate;
 
       setOemPartId(estimate.oem_part_id);
+      setOemPartPatternId(estimate.oem_part_pattern_id);
       setPartSearch(estimate.oem_part_number);
       setOemPartNumber(estimate.oem_part_number);
       setManufacturer(estimate.manufacturer ?? "");
@@ -231,6 +252,52 @@ export default function NewEstimatePage() {
     setHighlightedResult(0);
   }, [partSearch]);
 
+  // Whenever a part gets selected, fetch its saved coating patterns.
+  // If there are saved patterns, the edge starts blank (no runs) until
+  // the user explicitly picks one or chooses to create a new pattern —
+  // showing a pattern already applied before any choice is made would
+  // be misleading. If there are no saved patterns at all, default
+  // straight into "create new pattern" mode with sensible starting
+  // values, since that's the only option anyway.
+  useEffect(() => {
+    if (!selectedPartId) {
+      setPatternOptions([]);
+      setIsCreatingNewPattern(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsLoadingPatterns(true);
+    setPatternsLoadError("");
+
+    (async () => {
+      const result = await getOemPartPatternsAction(selectedPartId);
+
+      if (cancelled) {
+        return;
+      }
+
+      if (result.success) {
+        setPatternOptions(result.patterns);
+
+        if (result.patterns.length === 0) {
+          startNewPattern();
+        }
+      } else {
+        setPatternsLoadError(result.message);
+        setPatternOptions([]);
+        startNewPattern();
+      }
+
+      setIsLoadingPatterns(false);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPartId]);
+
   // A search with text, no selected match, and no results at all means
   // this is a brand-new part not yet in the database. When editing an
   // existing estimate, always show the form immediately regardless of
@@ -249,9 +316,17 @@ export default function NewEstimatePage() {
     }
   }, [isNewPartMode, partSearch, editEstimateId]);
 
+  useEffect(() => {
+    if (isNewPartMode) {
+      startNewPattern();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isNewPartMode]);
+
   function loadPart(part: OemPart) {
     setSelectedPartId(part.id);
     setOemPartId(part.id);
+    setOemPartPatternId(null);
     setPartSearch(part.oemPartNumber);
 
     setOemPartNumber(part.oemPartNumber);
@@ -266,25 +341,47 @@ export default function NewEstimatePage() {
     setHoleCount(part.holeCount);
     setHoleDiameterMm(part.holeDiameterMm);
 
-    setTopBevelRuns(part.standardPattern.bevelRunsPerSide);
-    setLeadingEdgeRuns(part.standardPattern.leadingEdgeRunsPerSide);
-    setBottomFaceRuns(part.standardPattern.bottomFaceRunsPerSide);
-    if (part.standardPattern.eyebrowsPerHole > 0) {
-      setEyebrowType("short");
-      setShortEyebrowsPerHole(part.standardPattern.eyebrowsPerHole);
-    } else {
-      setEyebrowType("none");
-      setShortEyebrowsPerHole(2);
-    }
-
     setEdgeProfile("double-bevel");
 
+    // Blank the edge immediately — no pattern chosen yet, and the
+    // patterns-loaded effect above decides what happens next once the
+    // saved patterns for this part have been fetched.
+    setTopBevelRuns(0);
+    setLeadingEdgeRuns(0);
+    setBottomFaceRuns(0);
+    setEyebrowType("none");
+    setShortEyebrowsPerHole(2);
+    setIsCreatingNewPattern(false);
+
     setSaveMessage("");
+  }
+
+  function loadPattern(pattern: PatternOption) {
+    setOemPartPatternId(pattern.id);
+    setIsCreatingNewPattern(false);
+
+    setTopBevelRuns(pattern.bevelRunsPerSide);
+    setLeadingEdgeRuns(pattern.leadingEdgeRunsPerSide);
+    setBottomFaceRuns(pattern.bottomFaceRunsPerSide);
+    setEyebrowType(pattern.eyebrowType);
+    setShortEyebrowsPerHole(pattern.shortEyebrowsPerHole || 2);
+  }
+
+  function startNewPattern() {
+    setOemPartPatternId(null);
+    setIsCreatingNewPattern(true);
+
+    setTopBevelRuns(2);
+    setLeadingEdgeRuns(1);
+    setBottomFaceRuns(2);
+    setEyebrowType("none");
+    setShortEyebrowsPerHole(2);
   }
 
   function clearPart() {
     setSelectedPartId(null);
     setOemPartId(null);
+    setOemPartPatternId(null);
     setPartSearch("");
 
     setOemPartNumber("");
@@ -302,11 +399,15 @@ export default function NewEstimatePage() {
     setHoleDiameterMm(26);
 
     setEdgeProfile("double-bevel");
-    setTopBevelRuns(2);
-    setLeadingEdgeRuns(1);
-    setBottomFaceRuns(2);
+    setTopBevelRuns(0);
+    setLeadingEdgeRuns(0);
+    setBottomFaceRuns(0);
     setEyebrowType("none");
     setShortEyebrowsPerHole(2);
+
+    setPatternOptions([]);
+    setIsCreatingNewPattern(false);
+    setPatternsLoadError("");
 
     setSellRatePerCm2(0);
     setSaveMessage("");
@@ -418,6 +519,7 @@ export default function NewEstimatePage() {
   function buildEstimateInput(): CreateEstimateInput {
     return {
       oemPartId,
+      oemPartPatternId,
       oemPartNumber,
       manufacturer,
       machineType,
@@ -773,14 +875,105 @@ export default function NewEstimatePage() {
               )}
             </section>
 
+            {partIsSelected && (
+              <section className="rounded-lg border border-slate-300 bg-white shadow-sm">
+                <div className="border-b border-slate-200 px-5 py-4">
+                  <h3 className="font-semibold">Coating pattern for this part</h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Pick a pattern this part has used before, or create a new one.
+                  </p>
+                </div>
+
+                <div className="p-5">
+                  {isLoadingPatterns && (
+                    <p className="text-sm text-slate-500">Loading saved patterns…</p>
+                  )}
+
+                  {patternsLoadError && (
+                    <p className="text-sm text-red-700">{patternsLoadError}</p>
+                  )}
+
+                  {!isLoadingPatterns && (
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {patternOptions.map((pattern) => {
+                        const isActive =
+                          !isCreatingNewPattern && oemPartPatternId === pattern.id;
+
+                        return (
+                          <button
+                            key={pattern.id}
+                            type="button"
+                            onClick={() => loadPattern(pattern)}
+                            className={`rounded-md border p-3 text-left transition ${
+                              isActive
+                                ? "border-slate-900 ring-2 ring-slate-200"
+                                : "border-slate-300 hover:border-slate-400"
+                            }`}
+                          >
+                            <div className="mb-2 overflow-hidden rounded border border-slate-200 bg-slate-50">
+                              <CoatingLayout
+                                lengthMm={lengthMm || 100}
+                                widthMm={widthMm || 100}
+                                thicknessMm={thicknessMm || 20}
+                                holeCount={holeCount}
+                                holeDiameterMm={holeDiameterMm}
+                                edgeProfile={edgeProfile}
+                                topBevelRuns={pattern.bevelRunsPerSide}
+                                leadingEdgeRuns={pattern.leadingEdgeRunsPerSide}
+                                bottomFaceRuns={pattern.bottomFaceRunsPerSide}
+                                eyebrowType={pattern.eyebrowType}
+                                eyebrowsPerHole={
+                                  pattern.eyebrowType === "short"
+                                    ? pattern.shortEyebrowsPerHole
+                                    : 0
+                                }
+                              />
+                            </div>
+
+                            <div className="text-sm font-semibold">
+                              {pattern.patternLabel}
+                            </div>
+
+                            <div className="mt-0.5 text-xs text-slate-500">
+                              Bevel {pattern.bevelRunsPerSide} · Leading{" "}
+                              {pattern.leadingEdgeRunsPerSide} · Bottom{" "}
+                              {pattern.bottomFaceRunsPerSide}
+                              {pattern.eyebrowType !== "none" && (
+                                <> · {pattern.eyebrowType} eyebrows</>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+
+                      <button
+                        type="button"
+                        onClick={startNewPattern}
+                        className={`flex flex-col items-center justify-center gap-1 rounded-md border border-dashed p-3 text-sm font-medium transition ${
+                          isCreatingNewPattern
+                            ? "border-slate-900 bg-slate-50 text-slate-900"
+                            : "border-slate-300 text-slate-500 hover:border-slate-400 hover:text-slate-700"
+                        }`}
+                      >
+                        <span className="text-lg leading-none">+</span>
+                        Create new pattern
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
+
             <section className="rounded-lg border border-slate-300 bg-white shadow-sm">
               <div className="border-b border-slate-200 px-5 py-4">
                 <h3 className="font-semibold">Coating pattern</h3>
 
                 <p className="mt-1 text-sm text-slate-500">
-                  {partIsSelected
-                    ? "The standard OEM pattern loads automatically."
-                    : "Enter the coating pattern for this new part."}
+                  {partIsSelected && !isCreatingNewPattern && oemPartPatternId
+                    ? "Loaded from the selected pattern above — adjust if needed."
+                    : partIsSelected
+                      ? "Pick a pattern above, or enter one manually below."
+                      : "Enter the coating pattern for this new part."}
                 </p>
               </div>
 
@@ -788,19 +981,28 @@ export default function NewEstimatePage() {
                 <NumberField
                   label="Bevel runs per side"
                   value={topBevelRuns}
-                  onChange={setTopBevelRuns}
+                  onChange={(value) => {
+                    setTopBevelRuns(value);
+                    setOemPartPatternId(null);
+                  }}
                 />
 
                 <NumberField
                   label="Leading-edge runs per side"
                   value={leadingEdgeRuns}
-                  onChange={setLeadingEdgeRuns}
+                  onChange={(value) => {
+                    setLeadingEdgeRuns(value);
+                    setOemPartPatternId(null);
+                  }}
                 />
 
                 <NumberField
                   label="Bottom-face runs per side"
                   value={bottomFaceRuns}
-                  onChange={setBottomFaceRuns}
+                  onChange={(value) => {
+                    setBottomFaceRuns(value);
+                    setOemPartPatternId(null);
+                  }}
                 />
 
                 <label className="block">
@@ -810,14 +1012,15 @@ export default function NewEstimatePage() {
 
                   <select
                     value={eyebrowType}
-                    onChange={(event) =>
+                    onChange={(event) => {
                       setEyebrowType(
                         event.target.value as
                           | "none"
                           | "short"
                           | "full"
-                      )
-                    }
+                      );
+                      setOemPartPatternId(null);
+                    }}
                     className="w-full rounded border border-slate-300 px-3 py-2"
                   >
                     <option value="none">None</option>
@@ -834,11 +1037,12 @@ export default function NewEstimatePage() {
 
                     <select
                       value={shortEyebrowsPerHole}
-                      onChange={(event) =>
+                      onChange={(event) => {
                         setShortEyebrowsPerHole(
                           Number(event.target.value)
-                        )
-                      }
+                        );
+                        setOemPartPatternId(null);
+                      }}
                       className="w-full rounded border border-slate-300 px-3 py-2"
                     >
                       <option value={1}>1 per hole</option>
