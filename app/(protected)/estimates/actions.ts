@@ -235,9 +235,20 @@ export async function approveEstimateAction(formData: FormData) {
 
       await linkEstimateToOemPartAndPattern(estimateId, oemPartId, newPattern.id);
     } catch (error) {
+      const message = toErrorMessage(
+        error,
+        "Unknown error while auto-saving the OEM part."
+      );
       console.error(
         "[approveEstimateAction] failed to auto-save OEM part/pattern:",
         error
+      );
+      revalidatePath("/approvals");
+      revalidatePath("/oem-parts");
+      redirect(
+        `/approvals?success=Estimate%20approved.&warning=${encodeURIComponent(
+          `Approved, but couldn't save it to the OEM Parts catalog: ${message}`
+        )}`
       );
     }
   }

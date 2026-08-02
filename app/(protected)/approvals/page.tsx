@@ -24,13 +24,14 @@ type ApprovalsPageProps = {
   searchParams: Promise<{
     error?: string;
     success?: string;
+    warning?: string;
   }>;
 };
 
 export default async function ApprovalsPage({
   searchParams,
 }: ApprovalsPageProps) {
-  const { error, success } = await searchParams;
+  const { error, success, warning } = await searchParams;
   const pending = await listPendingApprovals();
 
   const withPhotos = await Promise.all(
@@ -60,6 +61,12 @@ export default async function ApprovalsPage({
         {success && (
           <div className="rounded border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
             {success}
+          </div>
+        )}
+
+        {warning && (
+          <div className="rounded border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {warning}
           </div>
         )}
 
