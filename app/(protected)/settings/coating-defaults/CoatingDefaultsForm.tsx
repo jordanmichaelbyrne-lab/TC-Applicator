@@ -21,6 +21,9 @@ export default function CoatingDefaultsForm({ initialSettings }: Props) {
   const [eyebrowLength, setEyebrowLength] = useState(
     String(initialSettings.eyebrow_length_mm)
   );
+  const [holeRowSpacing, setHoleRowSpacing] = useState(
+    String(initialSettings.hole_row_spacing_mm)
+  );
 
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<UpdateSettingsResult | null>(null);
@@ -34,6 +37,7 @@ export default function CoatingDefaultsForm({ initialSettings }: Props) {
       carbideCostRatePerCm2: parseFloat(carbideCostRate),
       runWidthMm: parseFloat(runWidth),
       eyebrowLengthMm: parseFloat(eyebrowLength),
+      holeRowSpacingMm: parseFloat(holeRowSpacing),
     });
 
     setResult(response);
@@ -86,6 +90,26 @@ export default function CoatingDefaultsForm({ initialSettings }: Props) {
           min="0"
           value={eyebrowLength}
           onChange={(e) => setEyebrowLength(e.target.value)}
+          className="w-full rounded border border-gray-300 px-3 py-2"
+          required
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium mb-1">
+          2-row hole spacing (mm)
+        </label>
+        <p className="text-xs text-gray-500 mb-1">
+          Standard distance between the two rows of bolt holes on
+          double-row edges (e.g. scraper Stinger/End edges on machines
+          like the CAT 637).
+        </p>
+        <input
+          type="number"
+          step="0.1"
+          min="0"
+          value={holeRowSpacing}
+          onChange={(e) => setHoleRowSpacing(e.target.value)}
           className="w-full rounded border border-gray-300 px-3 py-2"
           required
         />

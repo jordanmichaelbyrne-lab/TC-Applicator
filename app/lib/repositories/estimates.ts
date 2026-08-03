@@ -25,6 +25,7 @@ export type EstimateRow = {
   thickness_mm: number;
   hole_count: number;
   hole_diameter_mm: number | null;
+  hole_rows: number;
   bevel_runs_per_side: number;
   leading_edge_runs_per_side: number;
   bottom_face_runs_per_side: number;
@@ -63,6 +64,7 @@ export type CreateEstimateInput = {
   thicknessMm: number;
   holeCount: number;
   holeDiameterMm?: number;
+  holeRows?: number;
   bevelRunsPerSide: number;
   leadingEdgeRunsPerSide: number;
   bottomFaceRunsPerSide: number;
@@ -94,6 +96,7 @@ function mapInputToRow(input: CreateEstimateInput, companyId: string, userId: st
     thickness_mm: input.thicknessMm,
     hole_count: input.holeCount,
     hole_diameter_mm: input.holeDiameterMm ?? null,
+    hole_rows: input.holeRows ?? 1,
     bevel_runs_per_side: input.bevelRunsPerSide,
     leading_edge_runs_per_side: input.leadingEdgeRunsPerSide,
     bottom_face_runs_per_side: input.bottomFaceRunsPerSide,
@@ -111,7 +114,6 @@ function mapInputToRow(input: CreateEstimateInput, companyId: string, userId: st
   };
 }
 
-/** Saves as a private draft — only the creator (or an admin) can see/edit it further. */
 export async function saveEstimateDraft(input: CreateEstimateInput, existingId?: string) {
   const { supabase, user, companyId } = await getCurrentUserAndCompany();
   const row = mapInputToRow(input, companyId, user.id, "draft");
@@ -138,7 +140,6 @@ export async function saveEstimateDraft(input: CreateEstimateInput, existingId?:
   return data as EstimateRow;
 }
 
-/** Locks the estimate and puts it in the admin approval queue. */
 export async function submitEstimateForApproval(input: CreateEstimateInput, existingId?: string) {
   const { supabase, user, companyId } = await getCurrentUserAndCompany();
   const row = mapInputToRow(input, companyId, user.id, "pending_approval");
@@ -165,7 +166,6 @@ export async function submitEstimateForApproval(input: CreateEstimateInput, exis
   return data as EstimateRow;
 }
 
-/** Every estimate belonging to the caller's company, regardless of status. */
 export async function listCompanyEstimates() {
   const { supabase, companyId } = await getCurrentUserAndCompany();
 
@@ -221,7 +221,6 @@ export async function getEstimate(estimateId: string) {
   return data as EstimateRow | null;
 }
 
-/** Admin-only: approve a pending estimate. RLS also enforces this — this check just gives a clean error message. */
 export async function approveEstimate(estimateId: string) {
   const { supabase, user, isAdmin } = await getCurrentUserAndCompany();
 
@@ -246,7 +245,6 @@ export async function approveEstimate(estimateId: string) {
   return data as EstimateRow;
 }
 
-/** Admin-only: reject a pending estimate, sending it back with a reason. */
 export async function rejectEstimate(estimateId: string, reason: string) {
   const { supabase, user, isAdmin } = await getCurrentUserAndCompany();
 
@@ -270,11 +268,6 @@ export async function rejectEstimate(estimateId: string, reason: string) {
   return data as EstimateRow;
 }
 
-/**
- * Links an approved estimate to its (possibly newly-created) OEM part
- * and coating pattern, so future estimates for the same part/pattern
- * combination find real catalog matches.
- */
 export async function linkEstimateToOemPartAndPattern(
   estimateId: string,
   oemPartId: string,
@@ -297,12 +290,6 @@ export async function linkEstimateToOemPartAndPattern(
   return data as EstimateRow;
 }
 
-/**
- * The estimate-photos bucket is private, so viewing a photo requires a
- * short-lived signed URL rather than a plain public URL. RLS still
- * applies here — this only succeeds if the caller's company matches
- * the folder the photo is stored under.
- */
 export async function getSignedPhotoUrl(photoPath: string, expiresInSeconds = 3600) {
   const supabase = await createClient();
 
@@ -317,12 +304,6 @@ export async function getSignedPhotoUrl(photoPath: string, expiresInSeconds = 36
   return data.signedUrl;
 }
 
-/**
- * Uploads a confirmation photo to the estimate-photos bucket (path
- * {company_id}/{estimate_id}/{timestamp}-{filename}, matching the
- * storage RLS policies from the migration) and attaches its path to
- * the estimate record.
- */
 export async function uploadEstimatePhoto(estimateId: string, file: File) {
   const { supabase, companyId } = await getCurrentUserAndCompany();
 
@@ -340,12 +321,6 @@ export async function uploadEstimatePhoto(estimateId: string, file: File) {
   return attachEstimatePhoto(estimateId, path);
 }
 
-/**
- * Records the storage path of an already-uploaded confirmation photo.
- * The actual file upload happens client-side (see the companion note on
- * uploading to the `estimate-photos` bucket) — this just attaches the
- * resulting path to the estimate record.
- */
 export async function attachEstimatePhoto(estimateId: string, photoPath: string) {
   const { supabase, user } = await getCurrentUserAndCompany();
 

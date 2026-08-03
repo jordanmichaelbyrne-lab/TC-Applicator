@@ -6,6 +6,8 @@ type CoatingLayoutProps = {
   thicknessMm: number;
   holeCount: number;
   holeDiameterMm?: number;
+  holeRows?: 1 | 2;
+  holeRowSpacingMm?: number;
   edgeProfile?: EdgeProfile;
   topBevelRuns?: number;
   leadingEdgeRuns?: number;
@@ -31,6 +33,8 @@ export default function CoatingLayout({
   thicknessMm,
   holeCount,
   holeDiameterMm = 26,
+  holeRows = 1,
+  holeRowSpacingMm = 75,
   edgeProfile = "double-bevel",
   topBevelRuns = 2,
   leadingEdgeRuns = 1,
@@ -42,6 +46,7 @@ export default function CoatingLayout({
   const safeWidth = Math.max(widthMm, 1);
   const safeThickness = Math.max(thicknessMm, 1);
   const safeBottomFaceRuns = Math.max(bottomFaceRuns, 0);
+  const isTwoRow = holeRows === 2;
 
   const frontX = 90;
   const frontY = 95;
@@ -54,14 +59,32 @@ export default function CoatingLayout({
     Math.min(16, (holeDiameterMm / safeWidth) * frontHeight * 0.5)
   );
 
+  // holeCount is per row — a 2-row edge with holeCount=6 has 6 holes in
+  // each row (12 physical holes total), matching how these parts are
+  // actually specced (e.g. "9 holes per row" on a scraper edge).
   const holePositions = Array.from(
     { length: safeHoleCount },
     (_, index) => frontX + ((index + 1) * frontWidth) / (safeHoleCount + 1)
   );
 
   const centreY = frontY + frontHeight / 2;
-  const upperEyebrowY = centreY - 34;
-  const lowerEyebrowY = centreY + 34;
+
+  // Convert the standard row spacing (mm) into plan-view pixels using
+  // the same scale the rest of the drawing uses for width, and clamp
+  // it so two rows never overflow past the top/bottom coating strips.
+  const pxPerMm = frontHeight / safeWidth;
+  const maxRowSpacingPx = frontHeight - 68;
+  const rowSpacingPx = isTwoRow
+    ? Math.min(Math.max(holeRowSpacingMm, 0) * pxPerMm, maxRowSpacingPx)
+    : 0;
+
+  const rowYs = isTwoRow
+    ? [centreY - rowSpacingPx / 2, centreY + rowSpacingPx / 2]
+    : [centreY];
+
+  const eyebrowGap = 20;
+  const upperEyebrowY = Math.min(...rowYs) - eyebrowGap;
+  const lowerEyebrowY = Math.max(...rowYs) + eyebrowGap;
 
   const profileX = 90;
   const profileY = 410;
@@ -85,7 +108,6 @@ export default function CoatingLayout({
   let backLeadingX: number | null = null;
 
   if (isSquare) {
-    // Plain rectangle. No bevel geometry at all.
     profilePoints = [
       `${profileX},${profileTop}`,
       `${profileX + profileWidth},${profileTop}`,
@@ -93,9 +115,8 @@ export default function CoatingLayout({
       `${profileX},${profileBottom}`,
     ].join(" ");
     frontLeadingX = profileX + profileWidth;
-    backLeadingX = null; // back face is a plain uncoated heel, nothing drawn
+    backLeadingX = null;
   } else if (isDouble) {
-    // Symmetric hexagon: bevel + leading face on both ends.
     profilePoints = [
       `${profileX + bevelLength},${profileTop}`,
       `${profileX + profileWidth - bevelLength},${profileTop}`,
@@ -115,8 +136,6 @@ export default function CoatingLayout({
     frontLeadingX = profileX + profileWidth;
     backLeadingX = profileX;
   } else {
-    // single-bevel: bevel + leading face on the front (right) only;
-    // the back (left) is a plain vertical uncoated heel.
     profilePoints = [
       `${profileX},${profileTop}`,
       `${profileX + profileWidth - bevelLength},${profileTop}`,
@@ -139,7 +158,7 @@ export default function CoatingLayout({
     eyebrowType === "full"
       ? "Full length"
       : eyebrowType === "short"
-        ? `${safeHoleCount * eyebrowsPerHole} short`
+        ? `${safeHoleCount * (isTwoRow ? 2 : 1) * eyebrowsPerHole} short`
         : "None";
 
   return (
@@ -213,9 +232,7 @@ export default function CoatingLayout({
         />
 
         {/* Bottom-face runs, plan view — one strip per run, stacking
-            inward from each long edge. Was previously two hardcoded
-            strips regardless of bottomFaceRuns; now scales properly,
-            including drawing nothing at 0. */}
+            inward from each long edge. Draws nothing at 0 runs. */}
         {Array.from({ length: safeBottomFaceRuns }).map((_, index) => {
           const offset = 14 + index * 13;
 
@@ -263,7 +280,7 @@ export default function CoatingLayout({
         )}
 
         {holePositions.map((x, index) => (
-          <g key={`hole-${index}`}>
+          <g key={`hole-column-${index}`}>
             <line
               x1={x}
               y1={frontY + 34}
@@ -272,15 +289,20 @@ export default function CoatingLayout({
               stroke="#64748b"
               strokeDasharray="5 5"
             />
-            <line x1={x - 23} y1={centreY} x2={x + 23} y2={centreY} stroke="#64748b" />
-            <circle
-              cx={x}
-              cy={centreY}
-              r={holeRadius}
-              fill="white"
-              stroke={LINE_COLOUR}
-              strokeWidth="1.5"
-            />
+
+            {rowYs.map((y, rowIndex) => (
+              <g key={`hole-${index}-row-${rowIndex}`}>
+                <line x1={x - 23} y1={y} x2={x + 23} y2={y} stroke="#64748b" />
+                <circle
+                  cx={x}
+                  cy={y}
+                  r={holeRadius}
+                  fill="white"
+                  stroke={LINE_COLOUR}
+                  strokeWidth="1.5"
+                />
+              </g>
+            ))}
 
             {eyebrowType === "short" && eyebrowsPerHole >= 1 && (
               <line

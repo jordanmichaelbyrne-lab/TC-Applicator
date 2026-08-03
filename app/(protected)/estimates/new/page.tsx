@@ -111,6 +111,7 @@ export default function NewEstimatePage() {
   const [thicknessMm, setThicknessMm] = useState(0);
   const [holeCount, setHoleCount] = useState(0);
   const [holeDiameterMm, setHoleDiameterMm] = useState(26);
+  const [holeRows, setHoleRows] = useState<1 | 2>(1);
 
   const [edgeProfile, setEdgeProfile] = useState<EdgeProfile>("double-bevel");
   const [topBevelRuns, setTopBevelRuns] = useState(0);
@@ -136,10 +137,9 @@ export default function NewEstimatePage() {
   const [runWidthMm, setRunWidthMm] = useState(25);
   const [eyebrowLengthMm, setEyebrowLengthMm] = useState(100);
   const [carbideCostRatePerCm2, setCarbideCostRatePerCm2] = useState(0.45);
+  const [holeRowSpacingMm, setHoleRowSpacingMm] = useState(75);
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
 
-  // Footer details for print — who's printing this and for which
-  // company, so the workshop copy is traceable.
   const [printPreparedBy, setPrintPreparedBy] = useState<string | null>(null);
   const [printCompanyName, setPrintCompanyName] = useState("");
   const [printCompanyLogoUrl, setPrintCompanyLogoUrl] = useState<string | null>(null);
@@ -183,6 +183,7 @@ export default function NewEstimatePage() {
         setRunWidthMm(settingsResult.settings.run_width_mm);
         setEyebrowLengthMm(settingsResult.settings.eyebrow_length_mm);
         setCarbideCostRatePerCm2(settingsResult.settings.carbide_cost_rate_per_cm2);
+        setHoleRowSpacingMm(settingsResult.settings.hole_row_spacing_mm);
       }
 
       if (printMetaResult.success) {
@@ -240,6 +241,7 @@ export default function NewEstimatePage() {
       setThicknessMm(estimate.thickness_mm);
       setHoleCount(estimate.hole_count);
       setHoleDiameterMm(estimate.hole_diameter_mm ?? 26);
+      setHoleRows(estimate.hole_rows === 2 ? 2 : 1);
 
       setEdgeProfile(estimate.edge_profile);
       setTopBevelRuns(estimate.bevel_runs_per_side);
@@ -414,6 +416,7 @@ export default function NewEstimatePage() {
     setThicknessMm(0);
     setHoleCount(0);
     setHoleDiameterMm(26);
+    setHoleRows(1);
 
     setEdgeProfile("double-bevel");
     setTopBevelRuns(0);
@@ -492,8 +495,14 @@ export default function NewEstimatePage() {
 
     const fullLengthAreaMm2 = lengthMm * runWidthMm * totalFullLengthRuns;
 
+    // Short eyebrows: hole count is per-row, so a 2-row edge has twice
+    // as many physical holes (and therefore eyebrows) as a 1-row edge
+    // with the same holeCount value.
+    const eyebrowHoleMultiplier = holeRows === 2 ? 2 : 1;
     const shortEyebrowQuantity =
-      eyebrowType === "short" ? holeCount * shortEyebrowsPerHole : 0;
+      eyebrowType === "short"
+        ? holeCount * eyebrowHoleMultiplier * shortEyebrowsPerHole
+        : 0;
 
     const shortEyebrowAreaMm2 =
       shortEyebrowQuantity * eyebrowLengthMm * runWidthMm;
@@ -523,6 +532,7 @@ export default function NewEstimatePage() {
   }, [
     lengthMm,
     holeCount,
+    holeRows,
     edgeProfile,
     topBevelRuns,
     leadingEdgeRuns,
@@ -552,6 +562,7 @@ export default function NewEstimatePage() {
       thicknessMm,
       holeCount,
       holeDiameterMm,
+      holeRows,
       bevelRunsPerSide: topBevelRuns,
       leadingEdgeRunsPerSide: leadingEdgeRuns,
       bottomFaceRunsPerSide: bottomFaceRuns,
@@ -855,7 +866,7 @@ export default function NewEstimatePage() {
                     </label>
                   </div>
 
-                  <div className="mb-4">
+                  <div className="mb-4 flex flex-wrap gap-4">
                     <label className="block max-w-xs">
                       <span className="mb-1 block text-sm font-medium">
                         Edge profile
@@ -874,6 +885,29 @@ export default function NewEstimatePage() {
                         </option>
                         <option value="square-edge">Square Edge</option>
                       </select>
+                    </label>
+
+                    <label className="block max-w-xs">
+                      <span className="mb-1 block text-sm font-medium">
+                        Hole rows
+                      </span>
+
+                      <select
+                        value={holeRows}
+                        onChange={(event) =>
+                          setHoleRows(Number(event.target.value) === 2 ? 2 : 1)
+                        }
+                        className="w-full rounded border border-slate-300 px-3 py-2"
+                      >
+                        <option value={1}>Single row</option>
+                        <option value={2}>2 row</option>
+                      </select>
+
+                      {holeRows === 2 && (
+                        <span className="mt-1 block text-xs text-slate-500">
+                          Standard row spacing: {holeRowSpacingMm} mm
+                        </span>
+                      )}
                     </label>
                   </div>
 
@@ -901,7 +935,7 @@ export default function NewEstimatePage() {
                     />
 
                     <NumberField
-                      label="Bolt holes"
+                      label={holeRows === 2 ? "Bolt holes (per row)" : "Bolt holes"}
                       value={holeCount}
                       onChange={setHoleCount}
                     />
@@ -960,6 +994,8 @@ export default function NewEstimatePage() {
                                 thicknessMm={thicknessMm || 20}
                                 holeCount={holeCount}
                                 holeDiameterMm={holeDiameterMm}
+                                holeRows={holeRows}
+                                holeRowSpacingMm={holeRowSpacingMm}
                                 edgeProfile={edgeProfile}
                                 topBevelRuns={pattern.bevelRunsPerSide}
                                 leadingEdgeRuns={pattern.leadingEdgeRunsPerSide}
@@ -1278,9 +1314,6 @@ export default function NewEstimatePage() {
                 </div>
               )}
 
-              {/* Print-only: moved here from the sidebar so it appears
-                  directly under the pricing breakdown instead of on its
-                  own trailing page, leaving the drawing as the last page. */}
               {showForm && (
                 <div className="hidden border-t border-slate-200 bg-slate-50 p-4 print:block">
                   <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
@@ -1337,6 +1370,8 @@ export default function NewEstimatePage() {
                       thicknessMm={thicknessMm}
                       holeCount={holeCount}
                       holeDiameterMm={holeDiameterMm}
+                      holeRows={holeRows}
+                      holeRowSpacingMm={holeRowSpacingMm}
                       edgeProfile={edgeProfile}
                       topBevelRuns={topBevelRuns}
                       leadingEdgeRuns={leadingEdgeRuns}
@@ -1348,8 +1383,6 @@ export default function NewEstimatePage() {
                     />
                   </div>
 
-                  {/* On screen only — the print version of this summary now
-                      lives above, right under Simple pricing. */}
                   <div className="print-hidden mt-4 rounded border border-slate-200 bg-slate-50 p-4">
                     <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
                       Estimate
