@@ -22,6 +22,7 @@ export type OemPartRow = {
   thickness_mm: number;
   hole_count: number;
   hole_diameter_mm: number;
+  hole_rows: number;
   compatible_machines: string[];
   standard_pattern: StandardCoatingPattern;
   engineering_status: EngineeringStatus;
@@ -44,6 +45,7 @@ export type CreateOemPartInput = {
   thicknessMm: number;
   holeCount: number;
   holeDiameterMm: number;
+  holeRows?: number;
   compatibleMachines: string[];
   standardPattern: StandardCoatingPattern;
   engineeringStatus: EngineeringStatus;
@@ -64,6 +66,7 @@ export function mapOemPartRow(row: OemPartRow) {
     thicknessMm: Number(row.thickness_mm),
     holeCount: row.hole_count,
     holeDiameterMm: Number(row.hole_diameter_mm),
+    holeRows: row.hole_rows === 2 ? 2 : 1,
     compatibleMachines: row.compatible_machines ?? [],
     standardPattern: row.standard_pattern,
     engineeringStatus: row.engineering_status,
@@ -89,6 +92,7 @@ export function mapCreateOemPartInput(
     thickness_mm: input.thicknessMm,
     hole_count: input.holeCount,
     hole_diameter_mm: input.holeDiameterMm,
+    hole_rows: input.holeRows === 2 ? 2 : 1,
     compatible_machines: input.compatibleMachines,
     standard_pattern: input.standardPattern,
     engineering_status: input.engineeringStatus,

@@ -42,6 +42,7 @@ type FormPartState = {
   thicknessMm: number;
   holeCount: number;
   holeDiameterMm: number;
+  holeRows: 1 | 2;
   compatibleMachines: string[];
   standardPattern: StandardCoatingPattern;
   engineeringStatus: EngineeringStatus;
@@ -90,6 +91,7 @@ export default function OemPartDetailPage() {
         thicknessMm: part.thicknessMm,
         holeCount: part.holeCount,
         holeDiameterMm: part.holeDiameterMm,
+        holeRows: part.holeRows === 2 ? 2 : 1,
         compatibleMachines: part.compatibleMachines,
         standardPattern: part.standardPattern,
         engineeringStatus: part.engineeringStatus,
@@ -170,6 +172,7 @@ export default function OemPartDetailPage() {
       thicknessMm: formPart.thicknessMm,
       holeCount: formPart.holeCount,
       holeDiameterMm: formPart.holeDiameterMm,
+      holeRows: formPart.holeRows,
       compatibleMachines: machinesText
         .split(/[\n,]/)
         .map((m) => m.trim())
@@ -204,8 +207,6 @@ export default function OemPartDetailPage() {
     const formData = new FormData();
     formData.set("partId", partId);
     await deleteOemPartAction(formData);
-    // deleteOemPartAction always redirects — no return value to check.
-    // If it somehow doesn't navigate away, at least stop the spinner.
     setIsDeleting(false);
   }
 
@@ -381,9 +382,7 @@ export default function OemPartDetailPage() {
                 value={formPart.engineeringStatus}
                 disabled={!isEditing}
                 options={["Draft", "Pending Verification", "Verified"]}
-                onChange={(v) =>
-                  updateField("engineeringStatus", v as EngineeringStatus)
-                }
+                onChange={(v) => updateField("engineeringStatus", v as EngineeringStatus)}
               />
               <ReadOnlyField
                 label="Condition Requirement"
@@ -404,7 +403,7 @@ export default function OemPartDetailPage() {
           </Section>
 
           <Section title="OEM Dimensions">
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <EditableNumberField
                 label="Length"
                 value={formPart.lengthMm}
@@ -428,7 +427,7 @@ export default function OemPartDetailPage() {
                 onChange={(v) => updateField("thicknessMm", v)}
               />
               <EditableNumberField
-                label="Bolt Holes"
+                label={formPart.holeRows === 2 ? "Bolt Holes (per row)" : "Bolt Holes"}
                 value={formPart.holeCount}
                 disabled={!isEditing}
                 onChange={(v) => updateField("holeCount", v)}
@@ -440,6 +439,16 @@ export default function OemPartDetailPage() {
                 suffix="mm"
                 step={0.1}
                 onChange={(v) => updateField("holeDiameterMm", v)}
+              />
+            </div>
+
+            <div className="mt-4 max-w-xs">
+              <EditableSelectField
+                label="Hole Rows"
+                value={String(formPart.holeRows)}
+                disabled={!isEditing}
+                options={["1", "2"]}
+                onChange={(v) => updateField("holeRows", v === "2" ? 2 : 1)}
               />
             </div>
           </Section>
@@ -504,16 +513,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function EditableTextField({
-  label,
-  value,
-  disabled,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  disabled: boolean;
-  onChange: (value: string) => void;
+function EditableTextField({ label, value, disabled, onChange }: {
+  label: string; value: string; disabled: boolean; onChange: (value: string) => void;
 }) {
   return (
     <label className="block">
@@ -528,18 +529,8 @@ function EditableTextField({
   );
 }
 
-function EditableSelectField({
-  label,
-  value,
-  disabled,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  disabled: boolean;
-  options: string[];
-  onChange: (value: string) => void;
+function EditableSelectField({ label, value, disabled, options, onChange }: {
+  label: string; value: string; disabled: boolean; options: string[]; onChange: (value: string) => void;
 }) {
   return (
     <label className="block">
@@ -551,29 +542,15 @@ function EditableSelectField({
         className="w-full rounded border border-slate-300 px-3 py-2 disabled:bg-slate-50 disabled:text-slate-700"
       >
         {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
+          <option key={option} value={option}>{option}</option>
         ))}
       </select>
     </label>
   );
 }
 
-function EditableNumberField({
-  label,
-  value,
-  disabled,
-  onChange,
-  suffix,
-  step = 1,
-}: {
-  label: string;
-  value: number;
-  disabled: boolean;
-  onChange: (value: number) => void;
-  suffix?: string;
-  step?: number;
+function EditableNumberField({ label, value, disabled, onChange, suffix, step = 1 }: {
+  label: string; value: number; disabled: boolean; onChange: (value: number) => void; suffix?: string; step?: number;
 }) {
   return (
     <label className="block">
@@ -586,11 +563,9 @@ function EditableNumberField({
           value={value}
           disabled={disabled}
           onChange={(e) => onChange(Number(e.target.value) || 0)}
-          className={
-            suffix
-              ? "min-w-0 flex-1 rounded-l border border-slate-300 px-3 py-2 disabled:bg-slate-50 disabled:text-slate-700"
-              : "min-w-0 flex-1 rounded border border-slate-300 px-3 py-2 disabled:bg-slate-50 disabled:text-slate-700"
-          }
+          className={suffix
+            ? "min-w-0 flex-1 rounded-l border border-slate-300 px-3 py-2 disabled:bg-slate-50 disabled:text-slate-700"
+            : "min-w-0 flex-1 rounded border border-slate-300 px-3 py-2 disabled:bg-slate-50 disabled:text-slate-700"}
         />
         {suffix && (
           <span className="flex items-center rounded-r border border-l-0 border-slate-300 bg-slate-50 px-3 text-sm text-slate-600">
@@ -606,9 +581,7 @@ function ReadOnlyField({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <div className="mb-1 text-sm font-medium">{label}</div>
-      <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
-        {value}
-      </div>
+      <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm">{value}</div>
     </div>
   );
 }

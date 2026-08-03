@@ -362,6 +362,7 @@ export default function NewEstimatePage() {
     setThicknessMm(part.thicknessMm);
     setHoleCount(part.holeCount);
     setHoleDiameterMm(part.holeDiameterMm);
+    setHoleRows(part.holeRows === 2 ? 2 : 1);
 
     setEdgeProfile("double-bevel");
 
@@ -1594,7 +1595,7 @@ function NumberField({
           type="number"
           min="0"
           step={step}
-          value={value || ""}
+          value={value}
           onChange={(event) =>
             onChange(Number(event.target.value) || 0)
           }

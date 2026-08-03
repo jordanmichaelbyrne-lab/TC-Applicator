@@ -43,6 +43,7 @@ export default function NewOemPartPage() {
 
   const [holeCount, setHoleCount] = useState(0);
   const [holeDiameterMm, setHoleDiameterMm] = useState(0);
+  const [holeRows, setHoleRows] = useState<1 | 2>(1);
 
   const [compatibleMachinesText, setCompatibleMachinesText] = useState("");
 
@@ -110,6 +111,7 @@ export default function NewOemPartPage() {
       thicknessMm,
       holeCount,
       holeDiameterMm,
+      holeRows,
       compatibleMachines,
       standardPattern,
       engineeringStatus,
@@ -203,12 +205,29 @@ export default function NewOemPartPage() {
             </Section>
 
             <Section title="OEM Dimensions">
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <NumberField label="Length" value={lengthMm} onChange={setLengthMm} suffix="mm" />
                 <NumberField label="Width" value={widthMm} onChange={setWidthMm} suffix="mm" />
                 <NumberField label="Thickness" value={thicknessMm} onChange={setThicknessMm} suffix="mm" step={0.1} />
-                <NumberField label="Bolt Holes" value={holeCount} onChange={setHoleCount} />
+                <NumberField
+                  label={holeRows === 2 ? "Bolt Holes (per row)" : "Bolt Holes"}
+                  value={holeCount}
+                  onChange={setHoleCount}
+                />
                 <NumberField label="Hole Diameter" value={holeDiameterMm} onChange={setHoleDiameterMm} suffix="mm" step={0.1} />
+              </div>
+
+              <div className="mt-4 max-w-xs">
+                <SelectField
+                  label="Hole Rows"
+                  value={String(holeRows)}
+                  onChange={(value) => setHoleRows(value === "2" ? 2 : 1)}
+                  options={["1", "2"]}
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  "2" for double-row scraper Stinger/End edges (e.g. CAT 637).
+                  Uses the company-wide standard row spacing.
+                </p>
               </div>
             </Section>
 
@@ -270,7 +289,10 @@ export default function NewOemPartPage() {
               <PreviewRow label="Category" value={partCategory} />
               <PreviewRow label="Profile" value={profileFamily} />
               <PreviewRow label="Dimensions" value={`${lengthMm} × ${widthMm} × ${thicknessMm} mm`} />
-              <PreviewRow label="Holes" value={`${holeCount} × Ø${holeDiameterMm} mm`} />
+              <PreviewRow
+                label="Holes"
+                value={`${holeCount} × Ø${holeDiameterMm} mm${holeRows === 2 ? " (2 row)" : ""}`}
+              />
               <PreviewRow
                 label="Machines"
                 value={compatibleMachines.length > 0 ? compatibleMachines.join(", ") : "—"}
@@ -365,7 +387,7 @@ function NumberField({ label, value, onChange, suffix, step = 1 }: {
           type="number"
           min="0"
           step={step}
-          value={value || ""}
+          value={value}
           onChange={(e) => onChange(Number(e.target.value) || 0)}
           className={suffix
             ? "min-w-0 flex-1 rounded-l border border-slate-300 px-3 py-2"
