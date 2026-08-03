@@ -112,7 +112,7 @@ export default async function ProtectedLayout({
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900">
-      <header className="border-b border-slate-300 bg-white">
+      <header className="border-b border-slate-300 bg-white print:hidden">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3">
           <Link href="/" className="flex items-center">
             <img

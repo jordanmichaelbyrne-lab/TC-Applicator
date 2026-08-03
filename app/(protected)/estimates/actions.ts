@@ -23,6 +23,8 @@ import {
   createPattern,
 } from "@/app/lib/repositories/oemPartPatterns";
 import { getCompanySettings, type CompanySettings } from "@/app/lib/settings/companySettings";
+import { getCurrentUserAndCompany } from "@/app/lib/repositories/tenant";
+import { getSignedCompanyLogoUrl } from "@/app/lib/repositories/platformOverview";
 
 type ActionResult<T> =
   | { success: true; estimate: T }
@@ -30,6 +32,36 @@ type ActionResult<T> =
 
 function toErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
+}
+
+type PrintMetaActionResult =
+  | {
+      success: true;
+      meta: {
+        fullName: string | null;
+        companyName: string;
+        companyLogoUrl: string | null;
+      };
+    }
+  | { success: false; message: string };
+
+export async function getPrintMetaAction(): Promise<PrintMetaActionResult> {
+  try {
+    const { fullName, companyName, companyLogoPath } = await getCurrentUserAndCompany();
+    const companyLogoUrl = companyLogoPath
+      ? await getSignedCompanyLogoUrl(companyLogoPath)
+      : null;
+
+    return {
+      success: true,
+      meta: { fullName, companyName, companyLogoUrl },
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Unable to load print details.",
+    };
+  }
 }
 
 export async function saveDraftAction(

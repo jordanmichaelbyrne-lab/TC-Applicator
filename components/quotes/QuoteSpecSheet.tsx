@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import CoatingLayout from "@/components/drawing/CoatingLayout";
 
 type QuoteSpecSheetProps = {
@@ -45,6 +46,8 @@ type QuoteSpecSheetProps = {
 
   notes?: string;
 };
+
+type PrintVariant = "workshop" | "customer";
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("en-AU", {
@@ -114,19 +117,39 @@ export default function QuoteSpecSheet({
 
   notes,
 }: QuoteSpecSheetProps) {
-  function printQuote() {
-    window.print();
+  const [variant, setVariant] = useState<PrintVariant>("workshop");
+  const isCustomerCopy = variant === "customer";
+
+  function printAs(nextVariant: PrintVariant) {
+    setVariant(nextVariant);
+    window.setTimeout(() => window.print(), 50);
   }
 
   return (
     <>
-      <button
-        type="button"
-        onClick={printQuote}
-        className="print-hidden w-full rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-      >
-        Print Quote & Specification
-      </button>
+      <div className="print-hidden flex flex-col gap-2 sm:flex-row">
+        <button
+          type="button"
+          onClick={() => printAs("workshop")}
+          className="w-full rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+        >
+          Print Workshop Copy
+        </button>
+
+        <button
+          type="button"
+          onClick={() => printAs("customer")}
+          className="w-full rounded border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50"
+        >
+          Print Customer Copy
+        </button>
+      </div>
+
+      <p className="print-hidden mt-2 text-xs text-slate-500">
+        {isCustomerCopy
+          ? "Customer copy: cost rate and profit figures are hidden — only the sell price shows."
+          : "Workshop copy: shows the full cost breakdown for internal/production use."}
+      </p>
 
       <section
         id="quote-spec-sheet"
@@ -295,7 +318,7 @@ export default function QuoteSpecSheet({
           </table>
         </section>
 
-        <section className="quote-section">
+        <section className="quote-section quote-section-drawing">
           <h2 className="quote-section-title">
             Coating Layout
           </h2>
@@ -360,46 +383,52 @@ export default function QuoteSpecSheet({
           </h2>
 
           <div className="quote-commercial-layout">
-            <table className="quote-table">
-              <tbody>
-                <tr>
-                  <th>Cost Rate</th>
-                  <td>
-                    {formatCurrency(costRate)} / cm²
-                  </td>
-                </tr>
+            {!isCustomerCopy && (
+              <table className="quote-table">
+                <tbody>
+                  <tr>
+                    <th>Cost Rate</th>
+                    <td>
+                      {formatCurrency(costRate)} / cm²
+                    </td>
+                  </tr>
 
-                <tr>
-                  <th>Sell Rate</th>
-                  <td>
-                    {formatCurrency(sellRate)} / cm²
-                  </td>
-                </tr>
+                  <tr>
+                    <th>Sell Rate</th>
+                    <td>
+                      {formatCurrency(sellRate)} / cm²
+                    </td>
+                  </tr>
 
-                <tr>
-                  <th>Calculated Cost</th>
-                  <td>
-                    {formatCurrency(costPrice)}
-                  </td>
-                </tr>
+                  <tr>
+                    <th>Calculated Cost</th>
+                    <td>
+                      {formatCurrency(costPrice)}
+                    </td>
+                  </tr>
 
-                <tr>
-                  <th>Gross Profit</th>
-                  <td>
-                    {formatCurrency(grossProfit)}
-                  </td>
-                </tr>
+                  <tr>
+                    <th>Gross Profit</th>
+                    <td>
+                      {formatCurrency(grossProfit)}
+                    </td>
+                  </tr>
 
-                <tr>
-                  <th>Gross Margin</th>
-                  <td>
-                    {grossMargin.toFixed(1)}%
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+                  <tr>
+                    <th>Gross Margin</th>
+                    <td>
+                      {grossMargin.toFixed(1)}%
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            )}
 
-            <div className="quote-total">
+            <div
+              className={
+                isCustomerCopy ? "quote-total quote-total-full" : "quote-total"
+              }
+            >
               <p>Quoted Sell Price</p>
 
               <strong>
@@ -459,7 +488,7 @@ export default function QuoteSpecSheet({
         .quote-sheet {
           width: 100%;
           border: 1px solid #cbd5e1;
-          padding: 28px;
+          padding: 24px;
           font-family: Arial, Helvetica, sans-serif;
         }
 
@@ -468,49 +497,49 @@ export default function QuoteSpecSheet({
           justify-content: space-between;
           gap: 24px;
           border-bottom: 3px solid #0f172a;
-          padding-bottom: 18px;
+          padding-bottom: 14px;
         }
 
         .quote-business-name {
           margin: 0;
-          font-size: 24px;
+          font-size: 22px;
           font-weight: 700;
         }
 
         .quote-company-logo {
           display: block;
-          max-height: 52px;
+          max-height: 46px;
           width: auto;
         }
 
         .quote-business-description {
           margin: 5px 0 0;
-          font-size: 13px;
+          font-size: 12px;
           color: #475569;
         }
 
         .quote-header-details {
           text-align: right;
-          font-size: 13px;
+          font-size: 12px;
         }
 
         .quote-header-details p {
-          margin: 0 0 5px;
+          margin: 0 0 4px;
         }
 
         .quote-title-block {
           display: grid;
           grid-template-columns: 1fr 1fr 1fr;
-          gap: 20px;
+          gap: 16px;
           background: #f1f5f9;
           border: 1px solid #cbd5e1;
-          margin-top: 18px;
-          padding: 14px;
+          margin-top: 14px;
+          padding: 12px;
         }
 
         .quote-label {
-          margin: 0 0 4px;
-          font-size: 11px;
+          margin: 0 0 3px;
+          font-size: 10px;
           font-weight: 700;
           text-transform: uppercase;
           color: #64748b;
@@ -518,20 +547,21 @@ export default function QuoteSpecSheet({
 
         .quote-value {
           margin: 0;
-          font-size: 16px;
+          font-size: 15px;
           font-weight: 700;
         }
 
         .quote-section {
-          margin-top: 22px;
+          margin-top: 16px;
           break-inside: avoid;
+          page-break-inside: avoid;
         }
 
         .quote-section-title {
-          margin: 0 0 10px;
+          margin: 0 0 8px;
           border-bottom: 1px solid #94a3b8;
-          padding-bottom: 5px;
-          font-size: 15px;
+          padding-bottom: 4px;
+          font-size: 14px;
           font-weight: 700;
         }
 
@@ -548,21 +578,21 @@ export default function QuoteSpecSheet({
         }
 
         .quote-specification-item {
-          min-height: 64px;
+          min-height: 56px;
           background: white;
-          padding: 10px;
+          padding: 8px 10px;
         }
 
         .quote-table {
           width: 100%;
           border-collapse: collapse;
-          font-size: 12px;
+          font-size: 11px;
         }
 
         .quote-table th,
         .quote-table td {
           border: 1px solid #cbd5e1;
-          padding: 8px;
+          padding: 6px 8px;
           text-align: left;
           vertical-align: middle;
         }
@@ -572,30 +602,39 @@ export default function QuoteSpecSheet({
           font-weight: 700;
         }
 
+        .quote-section-drawing {
+          break-inside: avoid;
+          page-break-inside: avoid;
+          page-break-before: auto;
+        }
+
         .quote-drawing {
           width: 100%;
+          max-width: 620px;
+          margin: 0 auto;
           overflow: hidden;
           border: 1px solid #cbd5e1;
           background: white;
-          padding: 10px;
+          padding: 8px;
         }
 
         .quote-drawing svg {
           display: block;
           width: 100%;
-          max-height: 400px;
+          height: auto;
+          max-height: 300px;
         }
 
         .quote-drawing-note {
-          margin: 7px 0 0;
-          font-size: 10px;
+          margin: 6px 0 0;
+          font-size: 9px;
           color: #64748b;
         }
 
         .quote-commercial-layout {
           display: grid;
-          grid-template-columns: 1fr 230px;
-          gap: 18px;
+          grid-template-columns: 1fr 220px;
+          gap: 16px;
           align-items: stretch;
         }
 
@@ -604,13 +643,17 @@ export default function QuoteSpecSheet({
           flex-direction: column;
           justify-content: center;
           border: 2px solid #0f172a;
-          padding: 18px;
+          padding: 16px;
           text-align: center;
+        }
+
+        .quote-total-full {
+          grid-column: 1 / -1;
         }
 
         .quote-total p {
           margin: 0;
-          font-size: 12px;
+          font-size: 11px;
           font-weight: 700;
           text-transform: uppercase;
         }
@@ -618,7 +661,7 @@ export default function QuoteSpecSheet({
         .quote-total strong {
           display: block;
           margin: 8px 0;
-          font-size: 25px;
+          font-size: 24px;
         }
 
         .quote-total span {
@@ -627,38 +670,39 @@ export default function QuoteSpecSheet({
         }
 
         .quote-notes {
-          min-height: 80px;
+          min-height: 60px;
           border: 1px solid #cbd5e1;
-          padding: 12px;
+          padding: 10px;
           white-space: pre-wrap;
-          font-size: 12px;
+          font-size: 11px;
         }
 
         .quote-approval {
           display: grid;
           grid-template-columns: repeat(3, 1fr);
-          gap: 22px;
-          margin-top: 35px;
+          gap: 20px;
+          margin-top: 24px;
           break-inside: avoid;
+          page-break-inside: avoid;
         }
 
         .quote-approval p {
           margin: 0;
-          font-size: 11px;
+          font-size: 10px;
           font-weight: 700;
         }
 
         .quote-approval span {
           display: block;
-          height: 35px;
+          height: 30px;
           border-bottom: 1px solid #0f172a;
         }
 
         .quote-footer {
-          margin-top: 25px;
+          margin-top: 18px;
           border-top: 1px solid #cbd5e1;
-          padding-top: 10px;
-          font-size: 9px;
+          padding-top: 8px;
+          font-size: 8px;
           color: #64748b;
         }
 
@@ -667,14 +711,14 @@ export default function QuoteSpecSheet({
         }
 
         .quote-powered-by {
-          margin-top: 8px !important;
+          margin-top: 6px !important;
           color: #94a3b8;
           font-style: italic;
         }
 
         @page {
-          size: A4 portrait;
-          margin: 10mm;
+          size: A4 landscape;
+          margin: 8mm;
         }
 
         @media print {
@@ -706,7 +750,11 @@ export default function QuoteSpecSheet({
           }
 
           .quote-sheet {
-            font-size: 11px;
+            font-size: 10px;
+          }
+
+          .quote-section {
+            margin-top: 10px;
           }
         }
 

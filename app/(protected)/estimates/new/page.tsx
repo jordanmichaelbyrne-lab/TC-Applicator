@@ -10,6 +10,8 @@ import {
   getOemPartsAction,
   getOemPartPatternsAction,
   getEstimateAction,
+  getCompanySettingsAction,
+  getPrintMetaAction,
 } from "@/app/(protected)/estimates/actions";
 import type { CreateEstimateInput, EstimateStatus } from "@/app/lib/repositories/estimates";
 import type { OemPart } from "@/app/lib/repositories/oemParts";
@@ -25,10 +27,6 @@ type PatternOption = {
   eyebrowType: "none" | "short" | "full";
   shortEyebrowsPerHole: number;
 };
-
-const DEFAULT_RUN_WIDTH_MM = 25;
-const DEFAULT_EYEBROW_LENGTH_MM = 100;
-const CARBIDE_COST_RATE_PER_CM2 = 0.45;
 
 function normaliseSearchValue(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -65,6 +63,16 @@ function formatCurrency(value: number) {
     style: "currency",
     currency: "AUD",
   }).format(value);
+}
+
+function formatPrintDate(date: Date) {
+  return new Intl.DateTimeFormat("en-AU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
 }
 
 function getMachineType(part: OemPart) {
@@ -125,9 +133,18 @@ export default function NewEstimatePage() {
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [photoPath, setPhotoPath] = useState<string | null>(null);
 
-  // Coating pattern picker — patterns already saved against the
-  // currently selected OEM part, plus whether the user is entering a
-  // fresh pattern instead of picking a saved one.
+  const [runWidthMm, setRunWidthMm] = useState(25);
+  const [eyebrowLengthMm, setEyebrowLengthMm] = useState(100);
+  const [carbideCostRatePerCm2, setCarbideCostRatePerCm2] = useState(0.45);
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true);
+
+  // Footer details for print — who's printing this and for which
+  // company, so the workshop copy is traceable.
+  const [printPreparedBy, setPrintPreparedBy] = useState<string | null>(null);
+  const [printCompanyName, setPrintCompanyName] = useState("");
+  const [printCompanyLogoUrl, setPrintCompanyLogoUrl] = useState<string | null>(null);
+  const printDate = useMemo(() => formatPrintDate(new Date()), []);
+
   const [patternOptions, setPatternOptions] = useState<PatternOption[]>([]);
   const [isLoadingPatterns, setIsLoadingPatterns] = useState(false);
   const [patternsLoadError, setPatternsLoadError] = useState("");
@@ -146,19 +163,36 @@ export default function NewEstimatePage() {
     let cancelled = false;
 
     (async () => {
-      const result = await getOemPartsAction();
+      const [partsResult, settingsResult, printMetaResult] = await Promise.all([
+        getOemPartsAction(),
+        getCompanySettingsAction(),
+        getPrintMetaAction(),
+      ]);
 
       if (cancelled) {
         return;
       }
 
-      if (result.success) {
-        setAllParts(result.parts);
+      if (partsResult.success) {
+        setAllParts(partsResult.parts);
       } else {
-        setPartsLoadError(result.message);
+        setPartsLoadError(partsResult.message);
+      }
+
+      if (settingsResult.success) {
+        setRunWidthMm(settingsResult.settings.run_width_mm);
+        setEyebrowLengthMm(settingsResult.settings.eyebrow_length_mm);
+        setCarbideCostRatePerCm2(settingsResult.settings.carbide_cost_rate_per_cm2);
+      }
+
+      if (printMetaResult.success) {
+        setPrintPreparedBy(printMetaResult.meta.fullName);
+        setPrintCompanyName(printMetaResult.meta.companyName);
+        setPrintCompanyLogoUrl(printMetaResult.meta.companyLogoUrl);
       }
 
       setIsLoadingParts(false);
+      setIsLoadingSettings(false);
     })();
 
     return () => {
@@ -166,10 +200,6 @@ export default function NewEstimatePage() {
     };
   }, [editEstimateId]);
 
-  // If ?estimateId= is present, load that existing estimate (draft or
-  // pending approval) and prefill every field from it, so an admin can
-  // review/fix a submission before approving instead of only having
-  // Approve/Reject to choose from.
   useEffect(() => {
     if (!editEstimateId) {
       return;
@@ -252,13 +282,6 @@ export default function NewEstimatePage() {
     setHighlightedResult(0);
   }, [partSearch]);
 
-  // Whenever a part gets selected, fetch its saved coating patterns.
-  // If there are saved patterns, the edge starts blank (no runs) until
-  // the user explicitly picks one or chooses to create a new pattern —
-  // showing a pattern already applied before any choice is made would
-  // be misleading. If there are no saved patterns at all, default
-  // straight into "create new pattern" mode with sensible starting
-  // values, since that's the only option anyway.
   useEffect(() => {
     if (!selectedPartId) {
       setPatternOptions([]);
@@ -298,10 +321,6 @@ export default function NewEstimatePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPartId]);
 
-  // A search with text, no selected match, and no results at all means
-  // this is a brand-new part not yet in the database. When editing an
-  // existing estimate, always show the form immediately regardless of
-  // search state.
   const isNewPartMode =
     Boolean(partSearch.trim()) &&
     !selectedPartId &&
@@ -309,6 +328,7 @@ export default function NewEstimatePage() {
 
   const partIsSelected = Boolean(selectedPart);
   const showForm = Boolean(editEstimateId) || partIsSelected || isNewPartMode;
+  const isApproved = estimateStatus === "approved";
 
   useEffect(() => {
     if (isNewPartMode && !editEstimateId) {
@@ -343,9 +363,6 @@ export default function NewEstimatePage() {
 
     setEdgeProfile("double-bevel");
 
-    // Blank the edge immediately — no pattern chosen yet, and the
-    // patterns-loaded effect above decides what happens next once the
-    // saved patterns for this part have been fetched.
     setTopBevelRuns(0);
     setLeadingEdgeRuns(0);
     setBottomFaceRuns(0);
@@ -473,18 +490,17 @@ export default function NewEstimatePage() {
       bottomFaceRunQuantity +
       fullEyebrowRunQuantity;
 
-    const fullLengthAreaMm2 =
-      lengthMm * DEFAULT_RUN_WIDTH_MM * totalFullLengthRuns;
+    const fullLengthAreaMm2 = lengthMm * runWidthMm * totalFullLengthRuns;
 
     const shortEyebrowQuantity =
       eyebrowType === "short" ? holeCount * shortEyebrowsPerHole : 0;
 
     const shortEyebrowAreaMm2 =
-      shortEyebrowQuantity * DEFAULT_EYEBROW_LENGTH_MM * DEFAULT_RUN_WIDTH_MM;
+      shortEyebrowQuantity * eyebrowLengthMm * runWidthMm;
 
     const totalAreaCm2 = (fullLengthAreaMm2 + shortEyebrowAreaMm2) / 100;
 
-    const totalCarbideCost = totalAreaCm2 * CARBIDE_COST_RATE_PER_CM2;
+    const totalCarbideCost = totalAreaCm2 * carbideCostRatePerCm2;
 
     const totalSellPrice = totalAreaCm2 * sellRatePerCm2;
     const grossProfit = totalSellPrice - totalCarbideCost;
@@ -514,6 +530,9 @@ export default function NewEstimatePage() {
     eyebrowType,
     shortEyebrowsPerHole,
     sellRatePerCm2,
+    runWidthMm,
+    eyebrowLengthMm,
+    carbideCostRatePerCm2,
   ]);
 
   function buildEstimateInput(): CreateEstimateInput {
@@ -539,7 +558,7 @@ export default function NewEstimatePage() {
       eyebrowType,
       shortEyebrowsPerHole,
       totalAreaCm2: calculations.totalAreaCm2,
-      carbideCostRatePerCm2: CARBIDE_COST_RATE_PER_CM2,
+      carbideCostRatePerCm2,
       totalCarbideCost: calculations.totalCarbideCost,
       sellRatePerCm2,
       totalSellPrice: calculations.totalSellPrice,
@@ -647,7 +666,31 @@ export default function NewEstimatePage() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6">
-        <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div className="hidden print:flex print-title-page">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/tc-applicator-logo.png" alt="TC Applicator" className="print-title-logo" />
+
+          <div className="print-title-text">
+            <h1>Coating Estimate</h1>
+            <p>
+              {oemPartNumber || "New part"}
+              {manufacturer ? ` · ${manufacturer}` : ""}
+            </p>
+            {customerName && <p>Customer: {customerName}</p>}
+            {jobReference && <p>Job reference: {jobReference}</p>}
+          </div>
+
+          {printCompanyLogoUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={printCompanyLogoUrl}
+              alt={printCompanyName || "Company logo"}
+              className="print-title-logo"
+            />
+          )}
+        </div>
+
+        <div className="print-hidden mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h2 className="text-2xl font-semibold">
               {editEstimateId ? "Edit Estimate" : "New Estimate"}
@@ -664,7 +707,7 @@ export default function NewEstimatePage() {
             <button
               type="button"
               onClick={clearPart}
-              className="w-fit rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50"
+              className="print-hidden w-fit rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50"
             >
               New Estimate
             </button>
@@ -672,7 +715,7 @@ export default function NewEstimatePage() {
         </div>
 
         {!editEstimateId && (
-          <section className="relative mb-5 rounded-lg border border-slate-300 bg-white p-5 shadow-sm">
+          <section className="print-hidden relative mb-5 rounded-lg border border-slate-300 bg-white p-5 shadow-sm">
             <label className="block">
               <span className="mb-2 block text-sm font-semibold">
                 OEM part
@@ -753,7 +796,7 @@ export default function NewEstimatePage() {
           </section>
         )}
 
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_440px]">
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_440px] print-layout-grid">
           <div className="space-y-5">
             <section className="rounded-lg border border-slate-300 bg-white shadow-sm">
               <div className="border-b border-slate-200 px-5 py-4">
@@ -876,7 +919,7 @@ export default function NewEstimatePage() {
             </section>
 
             {partIsSelected && (
-              <section className="rounded-lg border border-slate-300 bg-white shadow-sm">
+              <section className="print-hidden rounded-lg border border-slate-300 bg-white shadow-sm">
                 <div className="border-b border-slate-200 px-5 py-4">
                   <h3 className="font-semibold">Coating pattern for this part</h3>
                   <p className="mt-1 text-sm text-slate-500">
@@ -966,7 +1009,22 @@ export default function NewEstimatePage() {
 
             <section className="rounded-lg border border-slate-300 bg-white shadow-sm">
               <div className="border-b border-slate-200 px-5 py-4">
-                <h3 className="font-semibold">Coating pattern</h3>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="font-semibold">Coating pattern</h3>
+
+                  {!isLoadingSettings && (
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      <span className="rounded-full border border-slate-300 bg-slate-50 px-2.5 py-1 font-medium text-slate-600">
+                        Run width: {runWidthMm} mm
+                      </span>
+                      {eyebrowType === "short" && (
+                        <span className="rounded-full border border-slate-300 bg-slate-50 px-2.5 py-1 font-medium text-slate-600">
+                          Eyebrow length: {eyebrowLengthMm} mm
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
 
                 <p className="mt-1 text-sm text-slate-500">
                   {partIsSelected && !isCreatingNewPattern && oemPartPatternId
@@ -1087,24 +1145,24 @@ export default function NewEstimatePage() {
               </div>
 
               <div className="grid gap-5 p-5 sm:grid-cols-2">
-                <ReadOnlyMoneyField
-                  label="Carbide rate"
-                  value={`${formatCurrency(
-                    CARBIDE_COST_RATE_PER_CM2
-                  )} / cm²`}
-                  helper="Set by an administrator"
-                />
+                <div className={`contents ${isApproved ? "print:hidden" : ""}`}>
+                  <ReadOnlyMoneyField
+                    label="Carbide rate"
+                    value={`${formatCurrency(carbideCostRatePerCm2)} / cm²`}
+                    helper="Set by an administrator"
+                  />
 
-                <ReadOnlyMoneyField
-                  label="Total carbide cost"
-                  value={formatCurrency(
-                    calculations.totalCarbideCost
-                  )}
-                  helper={`${calculations.totalAreaCm2.toFixed(
-                    0
-                  )} cm² coated`}
-                  emphasised
-                />
+                  <ReadOnlyMoneyField
+                    label="Total carbide cost"
+                    value={formatCurrency(
+                      calculations.totalCarbideCost
+                    )}
+                    helper={`${calculations.totalAreaCm2.toFixed(
+                      0
+                    )} cm² coated`}
+                    emphasised
+                  />
+                </div>
 
                 <CurrencyField
                   label="Sell rate (per cm²)"
@@ -1121,15 +1179,17 @@ export default function NewEstimatePage() {
                   emphasised
                 />
 
-                <ReadOnlyMoneyField
-                  label="Gross profit"
-                  value={formatCurrency(calculations.grossProfit)}
-                />
+                <div className={`contents ${isApproved ? "print:hidden" : ""}`}>
+                  <ReadOnlyMoneyField
+                    label="Gross profit"
+                    value={formatCurrency(calculations.grossProfit)}
+                  />
 
-                <ReadOnlyMoneyField
-                  label="Gross margin"
-                  value={`${calculations.grossMargin.toFixed(1)}%`}
-                />
+                  <ReadOnlyMoneyField
+                    label="Gross margin"
+                    value={`${calculations.grossMargin.toFixed(1)}%`}
+                  />
+                </div>
               </div>
 
               <div className="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 sm:flex-row sm:items-center">
@@ -1137,7 +1197,7 @@ export default function NewEstimatePage() {
                   type="button"
                   onClick={handleSaveDraft}
                   disabled={!showForm || isSaving || isSubmitting}
-                  className="rounded border border-slate-400 bg-white px-5 py-2.5 text-sm font-medium hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="print-hidden rounded border border-slate-400 bg-white px-5 py-2.5 text-sm font-medium hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {isSaving ? "Saving…" : "Save Draft"}
                 </button>
@@ -1146,7 +1206,7 @@ export default function NewEstimatePage() {
                   type="button"
                   onClick={handleSubmitForApproval}
                   disabled={!showForm || isSaving || isSubmitting}
-                  className="rounded bg-emerald-700 px-5 py-2.5 text-sm font-medium text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                  className="print-hidden rounded bg-emerald-700 px-5 py-2.5 text-sm font-medium text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300"
                 >
                   {isSubmitting
                     ? "Saving…"
@@ -1159,7 +1219,7 @@ export default function NewEstimatePage() {
                   type="button"
                   onClick={() => window.print()}
                   disabled={!showForm}
-                  className="rounded bg-slate-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                  className="print-hidden rounded bg-slate-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
                 >
                   Print / PDF
                 </button>
@@ -1180,7 +1240,7 @@ export default function NewEstimatePage() {
               </div>
 
               {estimateId && (
-                <div className="border-t border-slate-200 px-5 py-4">
+                <div className="print-hidden border-t border-slate-200 px-5 py-4">
                   <span className="mb-2 block text-sm font-medium">
                     Confirmation photo
                   </span>
@@ -1217,11 +1277,47 @@ export default function NewEstimatePage() {
                   </p>
                 </div>
               )}
+
+              {/* Print-only: moved here from the sidebar so it appears
+                  directly under the pricing breakdown instead of on its
+                  own trailing page, leaving the drawing as the last page. */}
+              {showForm && (
+                <div className="hidden border-t border-slate-200 bg-slate-50 p-4 print:block">
+                  <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                    Estimate
+                  </div>
+
+                  <div className="mt-3 space-y-2">
+                    <SummaryRow label="OEM part" value={oemPartNumber} />
+
+                    {customerName && (
+                      <SummaryRow label="Customer" value={customerName} />
+                    )}
+
+                    {jobReference && (
+                      <SummaryRow label="Job ref (Pronto)" value={jobReference} />
+                    )}
+
+                    {!isApproved && (
+                      <SummaryRow
+                        label="Carbide cost"
+                        value={formatCurrency(calculations.totalCarbideCost)}
+                      />
+                    )}
+
+                    <SummaryRow
+                      label="Sell price"
+                      value={formatCurrency(calculations.totalSellPrice)}
+                      emphasised
+                    />
+                  </div>
+                </div>
+              )}
             </section>
           </div>
 
           <aside className="h-fit rounded-lg border border-slate-300 bg-white shadow-sm xl:sticky xl:top-5">
-            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+            <div className="print-hidden flex items-center justify-between border-b border-slate-200 px-5 py-4">
               <h3 className="font-semibold">Live coating layout</h3>
 
               {showForm && (
@@ -1234,7 +1330,7 @@ export default function NewEstimatePage() {
             <div className="p-4">
               {showForm ? (
                 <>
-                  <div className="overflow-hidden rounded border border-slate-300 bg-white p-3">
+                  <div className="overflow-hidden rounded border border-slate-300 bg-white p-3 print-drawing">
                     <CoatingLayout
                       lengthMm={lengthMm}
                       widthMm={widthMm}
@@ -1252,7 +1348,9 @@ export default function NewEstimatePage() {
                     />
                   </div>
 
-                  <div className="mt-4 rounded border border-slate-200 bg-slate-50 p-4">
+                  {/* On screen only — the print version of this summary now
+                      lives above, right under Simple pricing. */}
+                  <div className="print-hidden mt-4 rounded border border-slate-200 bg-slate-50 p-4">
                     <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
                       Estimate
                     </div>
@@ -1295,6 +1393,144 @@ export default function NewEstimatePage() {
             </div>
           </aside>
         </div>
+
+        {!isApproved && (
+          <div className="print-watermark" aria-hidden="true">
+            <span>Internal Use Only - Unapproved</span>
+          </div>
+        )}
+
+        <div className="print-footer">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/tc-applicator-logo.png" alt="TC Applicator" className="print-footer-logo" />
+
+          <div className="print-footer-meta">
+            <span>Printed: {printDate}</span>
+            <span>Prepared by: {printPreparedBy || "—"}</span>
+          </div>
+
+          {printCompanyLogoUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={printCompanyLogoUrl}
+              alt={printCompanyName || "Company logo"}
+              className="print-footer-logo"
+            />
+          )}
+        </div>
+
+        <style jsx global>{`
+          .print-watermark {
+            display: none;
+          }
+
+          .print-footer {
+            display: none;
+          }
+
+          .print-layout-grid {
+            display: block !important;
+          }
+
+          .print-drawing svg {
+            min-width: 0 !important;
+            width: 100% !important;
+            max-width: 650px;
+            margin: 0 auto;
+            display: block;
+          }
+
+          .print-title-page {
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+            border-bottom: 3px solid #0f172a;
+            padding-bottom: 14px;
+            margin-bottom: 16px;
+          }
+
+          .print-title-logo {
+            max-height: 60px;
+            width: auto;
+          }
+
+          .print-title-text {
+            flex: 1;
+            text-align: center;
+          }
+
+          .print-title-text h1 {
+            margin: 0 0 4px;
+            font-size: 26px;
+            font-weight: 800;
+          }
+
+          .print-title-text p {
+            margin: 2px 0;
+            font-size: 13px;
+            color: #475569;
+          }
+
+          @media print {
+            .print-watermark {
+              display: flex;
+              position: fixed;
+              inset: 0;
+              align-items: center;
+              justify-content: center;
+              pointer-events: none;
+              z-index: 9999;
+            }
+
+            .print-watermark span {
+              transform: rotate(-28deg);
+              font-size: 40px;
+              font-weight: 800;
+              letter-spacing: 1px;
+              color: rgba(220, 38, 38, 0.32);
+              white-space: nowrap;
+            }
+
+            .print-footer {
+              display: flex;
+              position: fixed;
+              bottom: 4mm;
+              left: 8mm;
+              right: 8mm;
+              align-items: center;
+              justify-content: space-between;
+              border-top: 1px solid #cbd5e1;
+              padding-top: 4px;
+              font-size: 9px;
+              color: #64748b;
+              z-index: 9998;
+            }
+
+            .print-footer-logo {
+              max-height: 22px;
+              width: auto;
+            }
+
+            .print-footer-meta {
+              display: flex;
+              flex-direction: column;
+              text-align: center;
+            }
+
+            .print-hidden {
+              display: none !important;
+            }
+
+            section {
+              break-inside: avoid;
+              page-break-inside: avoid;
+            }
+
+            body {
+              padding-bottom: 14mm;
+            }
+          }
+        `}</style>
     </div>
   );
 }
