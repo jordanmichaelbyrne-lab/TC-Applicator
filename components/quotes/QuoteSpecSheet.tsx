@@ -24,6 +24,8 @@ type QuoteSpecSheetProps = {
   thicknessMm: number;
   holeCount: number;
   holeDiameterMm: number;
+  holeRows?: 1 | 2 | 3;
+  holeOffset?: boolean;
 
   bevelRunsPerSide: number;
   leadingEdgeRunsPerSide: number;
@@ -95,6 +97,8 @@ export default function QuoteSpecSheet({
   thicknessMm,
   holeCount,
   holeDiameterMm,
+  holeRows = 1,
+  holeOffset = false,
 
   bevelRunsPerSide,
   leadingEdgeRunsPerSide,
@@ -271,6 +275,7 @@ export default function QuoteSpecSheet({
                 <th>Thickness</th>
                 <th>Bolt Holes</th>
                 <th>Hole Diameter</th>
+                <th>Hole Layout</th>
               </tr>
             </thead>
 
@@ -280,7 +285,12 @@ export default function QuoteSpecSheet({
                 <td>{widthMm || 0} mm</td>
                 <td>{thicknessMm || 0} mm</td>
                 <td>{holeCount || 0}</td>
-                <td>{holeDiameterMm || 0} mm</td>
+                <td>{holeCount > 0 ? `${holeDiameterMm || 0} mm` : "—"}</td>
+                <td>
+                  {holeCount === 0
+                    ? "None"
+                    : `${holeRows > 1 ? `${holeRows} row` : "Single row"}${holeOffset ? ", offset" : ""}`}
+                </td>
               </tr>
             </tbody>
           </table>
@@ -310,6 +320,7 @@ export default function QuoteSpecSheet({
                 </td>
                 <td>
                   {bottomFaceRunsPerSide} per side
+                  {holeOffset ? " (1 side coated)" : ""}
                 </td>
                 <td>{eyebrowType || "None"}</td>
                 <td>{eyebrowsPerHole}</td>
@@ -330,6 +341,8 @@ export default function QuoteSpecSheet({
               thicknessMm={thicknessMm}
               holeCount={holeCount}
               holeDiameterMm={holeDiameterMm}
+              holeRows={holeRows}
+              holeOffset={holeOffset}
               topBevelRuns={bevelRunsPerSide}
               leadingEdgeRuns={leadingEdgeRunsPerSide}
               bottomFaceRuns={bottomFaceRunsPerSide}

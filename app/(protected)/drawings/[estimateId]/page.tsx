@@ -7,13 +7,13 @@ import {
 } from "@/app/lib/repositories/estimates";
 import { getCurrentUserAndCompany } from "@/app/lib/repositories/tenant";
 import { getSignedCompanyLogoUrl } from "@/app/lib/repositories/platformOverview";
+import { getCompanySettings } from "@/app/lib/settings/companySettings";
 
-// Same constants NewEstimatePage uses, so the area breakdown recomputed
-// here lines up with what was shown at estimate time.
-const RUN_WIDTH_MM = 25;
-const EYEBROW_LENGTH_MM = 100;
-
-function computeAreaBreakdown(estimate: EstimateRow) {
+function computeAreaBreakdown(
+  estimate: EstimateRow,
+  runWidthMm: number,
+  eyebrowLengthMm: number
+) {
   const profileMultiplier = estimate.edge_profile === "double-bevel" ? 2 : 1;
 
   const bevelRunQuantity =
@@ -22,7 +22,8 @@ function computeAreaBreakdown(estimate: EstimateRow) {
       : estimate.bevel_runs_per_side * profileMultiplier;
   const leadingEdgeRunQuantity =
     estimate.leading_edge_runs_per_side * profileMultiplier;
-  const bottomFaceRunQuantity = estimate.bottom_face_runs_per_side * 2;
+  const bottomFaceRunQuantity =
+    estimate.bottom_face_runs_per_side * (estimate.hole_offset ? 1 : 2);
   const fullEyebrowRunQuantity = estimate.eyebrow_type === "full" ? 2 : 0;
 
   const totalFullLengthRuns =
@@ -32,15 +33,17 @@ function computeAreaBreakdown(estimate: EstimateRow) {
     fullEyebrowRunQuantity;
 
   const fullLengthAreaMm2 =
-    estimate.length_mm * RUN_WIDTH_MM * totalFullLengthRuns;
+    estimate.length_mm * runWidthMm * totalFullLengthRuns;
 
+  const eyebrowHoleMultiplier =
+    estimate.hole_count === 0 ? 0 : Math.max(estimate.hole_rows, 1);
   const shortEyebrowQuantity =
     estimate.eyebrow_type === "short"
-      ? estimate.hole_count * estimate.short_eyebrows_per_hole
+      ? estimate.hole_count * eyebrowHoleMultiplier * estimate.short_eyebrows_per_hole
       : 0;
 
   const shortEyebrowAreaMm2 =
-    shortEyebrowQuantity * EYEBROW_LENGTH_MM * RUN_WIDTH_MM;
+    shortEyebrowQuantity * eyebrowLengthMm * runWidthMm;
 
   const eyebrowQuantity =
     estimate.eyebrow_type === "full"
@@ -101,8 +104,10 @@ export default async function DrawingDetailPage({
     ? await getSignedCompanyLogoUrl(companyLogoPath)
     : null;
 
+  const settings = await getCompanySettings();
+
   const { totalFullLengthRuns, eyebrowQuantity, fullLengthAreaCm2, eyebrowAreaCm2 } =
-    computeAreaBreakdown(estimate);
+    computeAreaBreakdown(estimate, settings.run_width_mm, settings.eyebrow_length_mm);
 
   const costPrice = estimate.total_carbide_cost ?? 0;
   const sellPrice = estimate.total_sell_price ?? 0;
@@ -150,6 +155,8 @@ export default async function DrawingDetailPage({
           thicknessMm={estimate.thickness_mm}
           holeCount={estimate.hole_count}
           holeDiameterMm={estimate.hole_diameter_mm ?? 0}
+          holeRows={estimate.hole_rows === 2 ? 2 : estimate.hole_rows === 3 ? 3 : 1}
+          holeOffset={Boolean(estimate.hole_offset)}
           bevelRunsPerSide={estimate.bevel_runs_per_side}
           leadingEdgeRunsPerSide={estimate.leading_edge_runs_per_side}
           bottomFaceRunsPerSide={estimate.bottom_face_runs_per_side}
