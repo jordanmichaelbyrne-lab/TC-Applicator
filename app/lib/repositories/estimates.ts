@@ -26,6 +26,7 @@ export type EstimateRow = {
   hole_count: number;
   hole_diameter_mm: number | null;
   hole_rows: number;
+  hole_offset: boolean;
   bevel_runs_per_side: number;
   leading_edge_runs_per_side: number;
   bottom_face_runs_per_side: number;
@@ -64,7 +65,8 @@ export type CreateEstimateInput = {
   thicknessMm: number;
   holeCount: number;
   holeDiameterMm?: number;
-  holeRows?: number;
+  holeRows?: 1 | 2 | 3;
+  holeOffset?: boolean;
   bevelRunsPerSide: number;
   leadingEdgeRunsPerSide: number;
   bottomFaceRunsPerSide: number;
@@ -96,7 +98,8 @@ function mapInputToRow(input: CreateEstimateInput, companyId: string, userId: st
     thickness_mm: input.thicknessMm,
     hole_count: input.holeCount,
     hole_diameter_mm: input.holeDiameterMm ?? null,
-    hole_rows: input.holeRows ?? 1,
+    hole_rows: input.holeRows && input.holeRows >= 1 && input.holeRows <= 3 ? input.holeRows : 1,
+    hole_offset: input.holeOffset ?? false,
     bevel_runs_per_side: input.bevelRunsPerSide,
     leading_edge_runs_per_side: input.leadingEdgeRunsPerSide,
     bottom_face_runs_per_side: input.bottomFaceRunsPerSide,

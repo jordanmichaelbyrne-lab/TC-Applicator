@@ -6,8 +6,10 @@ type CoatingLayoutProps = {
   thicknessMm: number;
   holeCount: number;
   holeDiameterMm?: number;
-  holeRows?: 1 | 2;
+  holeRows?: 1 | 2 | 3;
+  holeOffset?: boolean;
   holeRowSpacingMm?: number;
+  holeOffsetMm?: number;
   edgeProfile?: EdgeProfile;
   topBevelRuns?: number;
   leadingEdgeRuns?: number;
@@ -34,7 +36,9 @@ export default function CoatingLayout({
   holeCount,
   holeDiameterMm = 26,
   holeRows = 1,
-  holeRowSpacingMm = 75,
+  holeOffset = false,
+  holeRowSpacingMm = 50,
+  holeOffsetMm = 75,
   edgeProfile = "double-bevel",
   topBevelRuns = 2,
   leadingEdgeRuns = 1,
@@ -46,7 +50,7 @@ export default function CoatingLayout({
   const safeWidth = Math.max(widthMm, 1);
   const safeThickness = Math.max(thicknessMm, 1);
   const safeBottomFaceRuns = Math.max(bottomFaceRuns, 0);
-  const isTwoRow = holeRows === 2;
+  const safeRowCount = safeHoleCount === 0 ? 0 : holeRows;
 
   const frontX = 90;
   const frontY = 95;
@@ -59,28 +63,34 @@ export default function CoatingLayout({
     Math.min(16, (holeDiameterMm / safeWidth) * frontHeight * 0.5)
   );
 
-  // holeCount is per row — a 2-row edge with holeCount=6 has 6 holes in
-  // each row (12 physical holes total), matching how these parts are
-  // actually specced (e.g. "9 holes per row" on a scraper edge).
   const holePositions = Array.from(
     { length: safeHoleCount },
     (_, index) => frontX + ((index + 1) * frontWidth) / (safeHoleCount + 1)
   );
 
   const centreY = frontY + frontHeight / 2;
-
-  // Convert the standard row spacing (mm) into plan-view pixels using
-  // the same scale the rest of the drawing uses for width, and clamp
-  // it so two rows never overflow past the top/bottom coating strips.
   const pxPerMm = frontHeight / safeWidth;
-  const maxRowSpacingPx = frontHeight - 68;
-  const rowSpacingPx = isTwoRow
-    ? Math.min(Math.max(holeRowSpacingMm, 0) * pxPerMm, maxRowSpacingPx)
-    : 0;
+  const maxOffsetPx = frontHeight - 68;
 
-  const rowYs = isTwoRow
-    ? [centreY - rowSpacingPx / 2, centreY + rowSpacingPx / 2]
-    : [centreY];
+  // The centre point the hole row(s) are built around — either the
+  // true centre, or shifted toward the top edge when offset is on.
+  const layoutCentreY = holeOffset
+    ? frontY + endInset + 24 + Math.min(Math.max(holeOffsetMm, 0) * pxPerMm, maxOffsetPx)
+    : centreY;
+
+  const rowSpacingPx = Math.min(Math.max(holeRowSpacingMm, 0) * pxPerMm, maxOffsetPx);
+
+  // Generalized for any row count (1, 2, 3...) — evenly spaced,
+  // symmetric around layoutCentreY. A single row collapses to just
+  // [layoutCentreY]; 2 rows sit ±half a spacing; 3 rows sit at
+  // -1, 0, +1 spacing, etc.
+  const rowYs =
+    safeRowCount <= 1
+      ? [layoutCentreY]
+      : Array.from({ length: safeRowCount }, (_, index) => {
+          const middleIndex = (safeRowCount - 1) / 2;
+          return layoutCentreY + (index - middleIndex) * rowSpacingPx;
+        });
 
   const eyebrowGap = 20;
   const upperEyebrowY = Math.min(...rowYs) - eyebrowGap;
@@ -100,7 +110,6 @@ export default function CoatingLayout({
   const isSquare = edgeProfile === "square-edge";
   const isDouble = edgeProfile === "double-bevel";
 
-  // ---- Section profile geometry, branched by edge profile ----
   let profilePoints: string;
   let frontBevelLine: { start: { x: number; y: number }; end: { x: number; y: number } } | null = null;
   let backBevelLine: { start: { x: number; y: number }; end: { x: number; y: number } } | null = null;
@@ -154,11 +163,12 @@ export default function CoatingLayout({
 
   const leadingFaceTopY = isSquare ? profileTop : profileTop + leadingHeight;
 
+  const eyebrowHoleMultiplier = Math.max(safeRowCount, 1);
   const eyebrowSummary =
     eyebrowType === "full"
       ? "Full length"
       : eyebrowType === "short"
-        ? `${safeHoleCount * (isTwoRow ? 2 : 1) * eyebrowsPerHole} short`
+        ? `${safeHoleCount * eyebrowHoleMultiplier * eyebrowsPerHole} short`
         : "None";
 
   return (
@@ -231,21 +241,21 @@ export default function CoatingLayout({
           strokeWidth="2"
         />
 
-        {/* Bottom-face runs, plan view — one strip per run, stacking
-            inward from each long edge. Draws nothing at 0 runs. */}
         {Array.from({ length: safeBottomFaceRuns }).map((_, index) => {
           const offset = 14 + index * 13;
 
           return (
             <g key={`bottom-face-plan-${index}`}>
-              <line
-                x1={frontX + endInset}
-                y1={frontY + offset}
-                x2={frontX + frontWidth - endInset}
-                y2={frontY + offset}
-                stroke={COATING_COLOUR}
-                strokeWidth="11"
-              />
+              {!holeOffset && (
+                <line
+                  x1={frontX + endInset}
+                  y1={frontY + offset}
+                  x2={frontX + frontWidth - endInset}
+                  y2={frontY + offset}
+                  stroke={COATING_COLOUR}
+                  strokeWidth="11"
+                />
+              )}
               <line
                 x1={frontX + endInset}
                 y1={frontY + frontHeight - offset}
@@ -385,6 +395,7 @@ export default function CoatingLayout({
           </text>
           <text x="330" y="41" fontSize="14" fontWeight="600">
             ×{bottomFaceRuns}
+            {holeOffset ? " (1 side)" : ""}
           </text>
 
           <text x="505" y="21" fontSize="12" fill={MUTED_TEXT}>

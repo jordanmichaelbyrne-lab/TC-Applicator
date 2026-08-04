@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createOemPartAction } from "@/app/(protected)/oem-parts/actions";
 import type {
@@ -43,7 +43,9 @@ export default function NewOemPartPage() {
 
   const [holeCount, setHoleCount] = useState(0);
   const [holeDiameterMm, setHoleDiameterMm] = useState(0);
-  const [holeRows, setHoleRows] = useState<1 | 2>(1);
+  const [holeRows, setHoleRows] = useState<1 | 2 | 3>(1);
+  const [holeOffset, setHoleOffset] = useState(false);
+  const [noHoles, setNoHoles] = useState(false);
 
   const [compatibleMachinesText, setCompatibleMachinesText] = useState("");
 
@@ -58,6 +60,12 @@ export default function NewOemPartPage() {
   const [notes, setNotes] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (noHoles) {
+      setHoleCount(0);
+    }
+  }, [noHoles]);
 
   const compatibleMachines = useMemo(
     () =>
@@ -112,6 +120,7 @@ export default function NewOemPartPage() {
       holeCount,
       holeDiameterMm,
       holeRows,
+      holeOffset,
       compatibleMachines,
       standardPattern,
       engineeringStatus,
@@ -205,29 +214,68 @@ export default function NewOemPartPage() {
             </Section>
 
             <Section title="OEM Dimensions">
+              <div className="mb-4 flex flex-wrap items-end gap-4">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={noHoles}
+                    onChange={(e) => setNoHoles(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300"
+                  />
+                  <span className="text-sm font-medium">No holes</span>
+                </label>
+
+                {!noHoles && (
+                  <>
+                    <div className="max-w-xs">
+                      <SelectField
+                        label="Hole Rows"
+                        value={String(holeRows)}
+                        onChange={(value) =>
+                          setHoleRows(Number(value) as 1 | 2 | 3)
+                        }
+                        options={["1", "2", "3"]}
+                      />
+                      {holeRows > 1 && (
+                        <p className="mt-1 text-xs text-slate-500">
+                          Uses the company-wide standard row spacing.
+                        </p>
+                      )}
+                    </div>
+
+                    <label className="flex items-center gap-2 pb-2.5">
+                      <input
+                        type="checkbox"
+                        checked={holeOffset}
+                        onChange={(e) => setHoleOffset(e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300"
+                      />
+                      <span className="text-sm font-medium">Offset toward top edge</span>
+                    </label>
+
+                    {holeOffset && (
+                      <p className="pb-2.5 text-xs text-slate-500">
+                        Uses the company-wide standard offset (e.g. flat grader blades).
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <NumberField label="Length" value={lengthMm} onChange={setLengthMm} suffix="mm" />
                 <NumberField label="Width" value={widthMm} onChange={setWidthMm} suffix="mm" />
                 <NumberField label="Thickness" value={thicknessMm} onChange={setThicknessMm} suffix="mm" step={0.1} />
-                <NumberField
-                  label={holeRows === 2 ? "Bolt Holes (per row)" : "Bolt Holes"}
-                  value={holeCount}
-                  onChange={setHoleCount}
-                />
-                <NumberField label="Hole Diameter" value={holeDiameterMm} onChange={setHoleDiameterMm} suffix="mm" step={0.1} />
-              </div>
-
-              <div className="mt-4 max-w-xs">
-                <SelectField
-                  label="Hole Rows"
-                  value={String(holeRows)}
-                  onChange={(value) => setHoleRows(value === "2" ? 2 : 1)}
-                  options={["1", "2"]}
-                />
-                <p className="mt-1 text-xs text-slate-500">
-                  "2" for double-row scraper Stinger/End edges (e.g. CAT 637).
-                  Uses the company-wide standard row spacing.
-                </p>
+                {!noHoles && (
+                  <>
+                    <NumberField
+                      label={holeRows > 1 ? "Bolt Holes (per row)" : "Bolt Holes"}
+                      value={holeCount}
+                      onChange={setHoleCount}
+                    />
+                    <NumberField label="Hole Diameter" value={holeDiameterMm} onChange={setHoleDiameterMm} suffix="mm" step={0.1} />
+                  </>
+                )}
               </div>
             </Section>
 
@@ -291,7 +339,11 @@ export default function NewOemPartPage() {
               <PreviewRow label="Dimensions" value={`${lengthMm} × ${widthMm} × ${thicknessMm} mm`} />
               <PreviewRow
                 label="Holes"
-                value={`${holeCount} × Ø${holeDiameterMm} mm${holeRows === 2 ? " (2 row)" : ""}`}
+                value={
+                  noHoles
+                    ? "None"
+                    : `${holeCount} × Ø${holeDiameterMm} mm${holeRows > 1 ? ` (${holeRows} row)` : ""}${holeOffset ? " (offset)" : ""}`
+                }
               />
               <PreviewRow
                 label="Machines"
@@ -387,7 +439,7 @@ function NumberField({ label, value, onChange, suffix, step = 1 }: {
           type="number"
           min="0"
           step={step}
-          value={value}
+          value={value || ""}
           onChange={(e) => onChange(Number(e.target.value) || 0)}
           className={suffix
             ? "min-w-0 flex-1 rounded-l border border-slate-300 px-3 py-2"

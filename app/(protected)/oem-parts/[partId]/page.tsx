@@ -42,7 +42,8 @@ type FormPartState = {
   thicknessMm: number;
   holeCount: number;
   holeDiameterMm: number;
-  holeRows: 1 | 2;
+  holeRows: 1 | 2 | 3;
+  holeOffset: boolean;
   compatibleMachines: string[];
   standardPattern: StandardCoatingPattern;
   engineeringStatus: EngineeringStatus;
@@ -64,6 +65,7 @@ export default function OemPartDetailPage() {
   const [formPart, setFormPart] = useState<FormPartState | null>(null);
   const [savedPart, setSavedPart] = useState<FormPartState | null>(null);
   const [machinesText, setMachinesText] = useState("");
+  const [noHoles, setNoHoles] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,6 +82,9 @@ export default function OemPartDetailPage() {
       }
 
       const part = result.part;
+      const loadedRows: 1 | 2 | 3 =
+        part.holeRows === 2 ? 2 : part.holeRows === 3 ? 3 : 1;
+
       const loaded: FormPartState = {
         oemPartNumber: part.oemPartNumber,
         manufacturer: part.manufacturer,
@@ -91,7 +96,8 @@ export default function OemPartDetailPage() {
         thicknessMm: part.thicknessMm,
         holeCount: part.holeCount,
         holeDiameterMm: part.holeDiameterMm,
-        holeRows: part.holeRows === 2 ? 2 : 1,
+        holeRows: loadedRows,
+        holeOffset: Boolean(part.holeOffset),
         compatibleMachines: part.compatibleMachines,
         standardPattern: part.standardPattern,
         engineeringStatus: part.engineeringStatus,
@@ -102,6 +108,7 @@ export default function OemPartDetailPage() {
       setFormPart(loaded);
       setSavedPart(loaded);
       setMachinesText(part.compatibleMachines.join("\n"));
+      setNoHoles(part.holeCount === 0);
       setIsLoaded(true);
     })();
 
@@ -109,6 +116,14 @@ export default function OemPartDetailPage() {
       cancelled = true;
     };
   }, [partId]);
+
+  useEffect(() => {
+    if (noHoles) {
+      setFormPart((current) =>
+        current ? { ...current, holeCount: 0 } : current
+      );
+    }
+  }, [noHoles]);
 
   function updateField<K extends keyof FormPartState>(
     key: K,
@@ -173,6 +188,7 @@ export default function OemPartDetailPage() {
       holeCount: formPart.holeCount,
       holeDiameterMm: formPart.holeDiameterMm,
       holeRows: formPart.holeRows,
+      holeOffset: formPart.holeOffset,
       compatibleMachines: machinesText
         .split(/[\n,]/)
         .map((m) => m.trim())
@@ -308,6 +324,7 @@ export default function OemPartDetailPage() {
                     if (savedPart) {
                       setFormPart(savedPart);
                       setMachinesText(savedPart.compatibleMachines.join("\n"));
+                      setNoHoles(savedPart.holeCount === 0);
                     }
                     setErrorMessage("");
                     setIsEditing(false);
@@ -403,6 +420,44 @@ export default function OemPartDetailPage() {
           </Section>
 
           <Section title="OEM Dimensions">
+            <div className="mb-4 flex flex-wrap items-end gap-4">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={noHoles}
+                  disabled={!isEditing}
+                  onChange={(e) => setNoHoles(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300"
+                />
+                <span className="text-sm font-medium">No holes</span>
+              </label>
+
+              {!noHoles && (
+                <>
+                  <div className="max-w-xs">
+                    <EditableSelectField
+                      label="Hole Rows"
+                      value={String(formPart.holeRows)}
+                      disabled={!isEditing}
+                      options={["1", "2", "3"]}
+                      onChange={(v) => updateField("holeRows", Number(v) as 1 | 2 | 3)}
+                    />
+                  </div>
+
+                  <label className="flex items-center gap-2 pb-2.5">
+                    <input
+                      type="checkbox"
+                      checked={formPart.holeOffset}
+                      disabled={!isEditing}
+                      onChange={(e) => updateField("holeOffset", e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300"
+                    />
+                    <span className="text-sm font-medium">Offset toward top edge</span>
+                  </label>
+                </>
+              )}
+            </div>
+
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <EditableNumberField
                 label="Length"
@@ -426,30 +481,24 @@ export default function OemPartDetailPage() {
                 step={0.1}
                 onChange={(v) => updateField("thicknessMm", v)}
               />
-              <EditableNumberField
-                label={formPart.holeRows === 2 ? "Bolt Holes (per row)" : "Bolt Holes"}
-                value={formPart.holeCount}
-                disabled={!isEditing}
-                onChange={(v) => updateField("holeCount", v)}
-              />
-              <EditableNumberField
-                label="Hole Diameter"
-                value={formPart.holeDiameterMm}
-                disabled={!isEditing}
-                suffix="mm"
-                step={0.1}
-                onChange={(v) => updateField("holeDiameterMm", v)}
-              />
-            </div>
-
-            <div className="mt-4 max-w-xs">
-              <EditableSelectField
-                label="Hole Rows"
-                value={String(formPart.holeRows)}
-                disabled={!isEditing}
-                options={["1", "2"]}
-                onChange={(v) => updateField("holeRows", v === "2" ? 2 : 1)}
-              />
+              {!noHoles && (
+                <>
+                  <EditableNumberField
+                    label={formPart.holeRows > 1 ? "Bolt Holes (per row)" : "Bolt Holes"}
+                    value={formPart.holeCount}
+                    disabled={!isEditing}
+                    onChange={(v) => updateField("holeCount", v)}
+                  />
+                  <EditableNumberField
+                    label="Hole Diameter"
+                    value={formPart.holeDiameterMm}
+                    disabled={!isEditing}
+                    suffix="mm"
+                    step={0.1}
+                    onChange={(v) => updateField("holeDiameterMm", v)}
+                  />
+                </>
+              )}
             </div>
           </Section>
 

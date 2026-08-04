@@ -111,7 +111,9 @@ export default function NewEstimatePage() {
   const [thicknessMm, setThicknessMm] = useState(0);
   const [holeCount, setHoleCount] = useState(0);
   const [holeDiameterMm, setHoleDiameterMm] = useState(26);
-  const [holeRows, setHoleRows] = useState<1 | 2>(1);
+  const [holeRows, setHoleRows] = useState<1 | 2 | 3>(1);
+  const [holeOffset, setHoleOffset] = useState(false);
+  const [noHoles, setNoHoles] = useState(false);
 
   const [edgeProfile, setEdgeProfile] = useState<EdgeProfile>("double-bevel");
   const [topBevelRuns, setTopBevelRuns] = useState(0);
@@ -137,7 +139,8 @@ export default function NewEstimatePage() {
   const [runWidthMm, setRunWidthMm] = useState(25);
   const [eyebrowLengthMm, setEyebrowLengthMm] = useState(100);
   const [carbideCostRatePerCm2, setCarbideCostRatePerCm2] = useState(0.45);
-  const [holeRowSpacingMm, setHoleRowSpacingMm] = useState(75);
+  const [holeRowSpacingMm, setHoleRowSpacingMm] = useState(50);
+  const [holeOffsetMm, setHoleOffsetMm] = useState(75);
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
 
   const [printPreparedBy, setPrintPreparedBy] = useState<string | null>(null);
@@ -154,6 +157,15 @@ export default function NewEstimatePage() {
     Boolean(editEstimateId)
   );
   const [loadExistingError, setLoadExistingError] = useState("");
+
+  // "No holes" just means holeCount = 0 — no separate DB field needed,
+  // since the drawing and area calc already treat a zero hole count
+  // correctly. This just keeps holeCount pinned at 0 while checked.
+  useEffect(() => {
+    if (noHoles) {
+      setHoleCount(0);
+    }
+  }, [noHoles]);
 
   useEffect(() => {
     if (!editEstimateId) {
@@ -184,6 +196,7 @@ export default function NewEstimatePage() {
         setEyebrowLengthMm(settingsResult.settings.eyebrow_length_mm);
         setCarbideCostRatePerCm2(settingsResult.settings.carbide_cost_rate_per_cm2);
         setHoleRowSpacingMm(settingsResult.settings.hole_row_spacing_mm);
+        setHoleOffsetMm(settingsResult.settings.hole_offset_mm);
       }
 
       if (printMetaResult.success) {
@@ -241,7 +254,10 @@ export default function NewEstimatePage() {
       setThicknessMm(estimate.thickness_mm);
       setHoleCount(estimate.hole_count);
       setHoleDiameterMm(estimate.hole_diameter_mm ?? 26);
-      setHoleRows(estimate.hole_rows === 2 ? 2 : 1);
+      const loadedRows = estimate.hole_rows;
+      setHoleRows(loadedRows === 2 ? 2 : loadedRows === 3 ? 3 : 1);
+      setHoleOffset(Boolean(estimate.hole_offset));
+      setNoHoles(estimate.hole_count === 0);
 
       setEdgeProfile(estimate.edge_profile);
       setTopBevelRuns(estimate.bevel_runs_per_side);
@@ -362,7 +378,9 @@ export default function NewEstimatePage() {
     setThicknessMm(part.thicknessMm);
     setHoleCount(part.holeCount);
     setHoleDiameterMm(part.holeDiameterMm);
-    setHoleRows(part.holeRows === 2 ? 2 : 1);
+    setHoleRows(part.holeRows === 2 ? 2 : part.holeRows === 3 ? 3 : 1);
+    setHoleOffset(Boolean(part.holeOffset));
+    setNoHoles(part.holeCount === 0);
 
     setEdgeProfile("double-bevel");
 
@@ -418,6 +436,8 @@ export default function NewEstimatePage() {
     setHoleCount(0);
     setHoleDiameterMm(26);
     setHoleRows(1);
+    setHoleOffset(false);
+    setNoHoles(false);
 
     setEdgeProfile("double-bevel");
     setTopBevelRuns(0);
@@ -484,7 +504,7 @@ export default function NewEstimatePage() {
     const bevelRunQuantity =
       edgeProfile === "square-edge" ? 0 : topBevelRuns * profileMultiplier;
     const leadingEdgeRunQuantity = leadingEdgeRuns * profileMultiplier;
-    const bottomFaceRunQuantity = bottomFaceRuns * 2;
+    const bottomFaceRunQuantity = bottomFaceRuns * (holeOffset ? 1 : 2);
 
     const fullEyebrowRunQuantity = eyebrowType === "full" ? 2 : 0;
 
@@ -496,10 +516,10 @@ export default function NewEstimatePage() {
 
     const fullLengthAreaMm2 = lengthMm * runWidthMm * totalFullLengthRuns;
 
-    // Short eyebrows: hole count is per-row, so a 2-row edge has twice
-    // as many physical holes (and therefore eyebrows) as a 1-row edge
-    // with the same holeCount value.
-    const eyebrowHoleMultiplier = holeRows === 2 ? 2 : 1;
+    // Eyebrows scale with the actual number of hole rows — a 3-row
+    // edge has 3x the physical holes (and eyebrows) of the same
+    // holeCount value on a single-row edge.
+    const eyebrowHoleMultiplier = holeCount === 0 ? 0 : Math.max(holeRows, 1);
     const shortEyebrowQuantity =
       eyebrowType === "short"
         ? holeCount * eyebrowHoleMultiplier * shortEyebrowsPerHole
@@ -534,6 +554,7 @@ export default function NewEstimatePage() {
     lengthMm,
     holeCount,
     holeRows,
+    holeOffset,
     edgeProfile,
     topBevelRuns,
     leadingEdgeRuns,
@@ -564,6 +585,7 @@ export default function NewEstimatePage() {
       holeCount,
       holeDiameterMm,
       holeRows,
+      holeOffset,
       bevelRunsPerSide: topBevelRuns,
       leadingEdgeRunsPerSide: leadingEdgeRuns,
       bottomFaceRunsPerSide: bottomFaceRuns,
@@ -867,7 +889,7 @@ export default function NewEstimatePage() {
                     </label>
                   </div>
 
-                  <div className="mb-4 flex flex-wrap gap-4">
+                  <div className="mb-4 flex flex-wrap items-end gap-4">
                     <label className="block max-w-xs">
                       <span className="mb-1 block text-sm font-medium">
                         Edge profile
@@ -888,28 +910,61 @@ export default function NewEstimatePage() {
                       </select>
                     </label>
 
-                    <label className="block max-w-xs">
-                      <span className="mb-1 block text-sm font-medium">
-                        Hole rows
-                      </span>
-
-                      <select
-                        value={holeRows}
-                        onChange={(event) =>
-                          setHoleRows(Number(event.target.value) === 2 ? 2 : 1)
-                        }
-                        className="w-full rounded border border-slate-300 px-3 py-2"
-                      >
-                        <option value={1}>Single row</option>
-                        <option value={2}>2 row</option>
-                      </select>
-
-                      {holeRows === 2 && (
-                        <span className="mt-1 block text-xs text-slate-500">
-                          Standard row spacing: {holeRowSpacingMm} mm
-                        </span>
-                      )}
+                    <label className="flex items-center gap-2 pb-2.5">
+                      <input
+                        type="checkbox"
+                        checked={noHoles}
+                        onChange={(event) => setNoHoles(event.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300"
+                      />
+                      <span className="text-sm font-medium">No holes</span>
                     </label>
+
+                    {!noHoles && (
+                      <>
+                        <label className="block max-w-xs">
+                          <span className="mb-1 block text-sm font-medium">
+                            Hole rows
+                          </span>
+
+                          <select
+                            value={holeRows}
+                            onChange={(event) =>
+                              setHoleRows(Number(event.target.value) as 1 | 2 | 3)
+                            }
+                            className="w-full rounded border border-slate-300 px-3 py-2"
+                          >
+                            <option value={1}>Single row</option>
+                            <option value={2}>2 row</option>
+                            <option value={3}>3 row</option>
+                          </select>
+
+                          {holeRows > 1 && (
+                            <span className="mt-1 block text-xs text-slate-500">
+                              Standard row spacing: {holeRowSpacingMm} mm
+                            </span>
+                          )}
+                        </label>
+
+                        <label className="flex items-center gap-2 pb-2.5">
+                          <input
+                            type="checkbox"
+                            checked={holeOffset}
+                            onChange={(event) => setHoleOffset(event.target.checked)}
+                            className="h-4 w-4 rounded border-slate-300"
+                          />
+                          <span className="text-sm font-medium">
+                            Offset toward top edge
+                          </span>
+                        </label>
+
+                        {holeOffset && (
+                          <span className="pb-2.5 text-xs text-slate-500">
+                            Standard offset: {holeOffsetMm} mm
+                          </span>
+                        )}
+                      </>
+                    )}
                   </div>
 
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
@@ -935,19 +990,23 @@ export default function NewEstimatePage() {
                       step={0.1}
                     />
 
-                    <NumberField
-                      label={holeRows === 2 ? "Bolt holes (per row)" : "Bolt holes"}
-                      value={holeCount}
-                      onChange={setHoleCount}
-                    />
+                    {!noHoles && (
+                      <>
+                        <NumberField
+                          label={holeRows > 1 ? "Bolt holes (per row)" : "Bolt holes"}
+                          value={holeCount}
+                          onChange={setHoleCount}
+                        />
 
-                    <NumberField
-                      label="Hole diameter"
-                      value={holeDiameterMm}
-                      onChange={setHoleDiameterMm}
-                      suffix="mm"
-                      step={0.1}
-                    />
+                        <NumberField
+                          label="Hole diameter"
+                          value={holeDiameterMm}
+                          onChange={setHoleDiameterMm}
+                          suffix="mm"
+                          step={0.1}
+                        />
+                      </>
+                    )}
                   </div>
                 </div>
               )}
@@ -996,7 +1055,9 @@ export default function NewEstimatePage() {
                                 holeCount={holeCount}
                                 holeDiameterMm={holeDiameterMm}
                                 holeRows={holeRows}
+                                holeOffset={holeOffset}
                                 holeRowSpacingMm={holeRowSpacingMm}
+                                holeOffsetMm={holeOffsetMm}
                                 edgeProfile={edgeProfile}
                                 topBevelRuns={pattern.bevelRunsPerSide}
                                 leadingEdgeRuns={pattern.leadingEdgeRunsPerSide}
@@ -1372,7 +1433,9 @@ export default function NewEstimatePage() {
                       holeCount={holeCount}
                       holeDiameterMm={holeDiameterMm}
                       holeRows={holeRows}
+                      holeOffset={holeOffset}
                       holeRowSpacingMm={holeRowSpacingMm}
+                      holeOffsetMm={holeOffsetMm}
                       edgeProfile={edgeProfile}
                       topBevelRuns={topBevelRuns}
                       leadingEdgeRuns={leadingEdgeRuns}

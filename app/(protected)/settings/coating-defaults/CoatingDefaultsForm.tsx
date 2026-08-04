@@ -24,6 +24,9 @@ export default function CoatingDefaultsForm({ initialSettings }: Props) {
   const [holeRowSpacing, setHoleRowSpacing] = useState(
     String(initialSettings.hole_row_spacing_mm)
   );
+  const [holeOffset, setHoleOffset] = useState(
+    String(initialSettings.hole_offset_mm)
+  );
 
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<UpdateSettingsResult | null>(null);
@@ -38,6 +41,7 @@ export default function CoatingDefaultsForm({ initialSettings }: Props) {
       runWidthMm: parseFloat(runWidth),
       eyebrowLengthMm: parseFloat(eyebrowLength),
       holeRowSpacingMm: parseFloat(holeRowSpacing),
+      holeOffsetMm: parseFloat(holeOffset),
     });
 
     setResult(response);
@@ -110,6 +114,26 @@ export default function CoatingDefaultsForm({ initialSettings }: Props) {
           min="0"
           value={holeRowSpacing}
           onChange={(e) => setHoleRowSpacing(e.target.value)}
+          className="w-full rounded border border-gray-300 px-3 py-2"
+          required
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium mb-1">
+          Hole offset from edge (mm)
+        </label>
+        <p className="text-xs text-gray-500 mb-1">
+          Standard distance the hole row sits from the top edge on
+          offset-hole edges (e.g. flat grader blades, where the row sits
+          away from the bevel side rather than centred).
+        </p>
+        <input
+          type="number"
+          step="0.1"
+          min="0"
+          value={holeOffset}
+          onChange={(e) => setHoleOffset(e.target.value)}
           className="w-full rounded border border-gray-300 px-3 py-2"
           required
         />

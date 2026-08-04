@@ -13,6 +13,7 @@ export async function updateCompanySettings(formData: {
   runWidthMm: number;
   eyebrowLengthMm: number;
   holeRowSpacingMm: number;
+  holeOffsetMm: number;
 }): Promise<UpdateSettingsResult> {
   const supabase = await createClient();
 
@@ -36,6 +37,9 @@ export async function updateCompanySettings(formData: {
   if (formData.holeRowSpacingMm <= 0) {
     return { success: false, error: "Hole row spacing must be greater than 0." };
   }
+  if (formData.holeOffsetMm <= 0) {
+    return { success: false, error: "Hole offset must be greater than 0." };
+  }
 
   const { companyId } = await getCurrentUserAndCompany();
 
@@ -46,6 +50,7 @@ export async function updateCompanySettings(formData: {
       run_width_mm: formData.runWidthMm,
       eyebrow_length_mm: formData.eyebrowLengthMm,
       hole_row_spacing_mm: formData.holeRowSpacingMm,
+      hole_offset_mm: formData.holeOffsetMm,
       updated_by: user.id,
     })
     .eq("company_id", companyId);
