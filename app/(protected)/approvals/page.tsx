@@ -8,6 +8,7 @@ import {
   approveEstimateAction,
   rejectEstimateAction,
 } from "@/app/(protected)/estimates/actions";
+import { getCompanySettings } from "@/app/lib/settings/companySettings";
 
 function formatCurrency(value: number | null) {
   if (value === null || value === undefined) {
@@ -33,6 +34,7 @@ export default async function ApprovalsPage({
 }: ApprovalsPageProps) {
   const { error, success, warning } = await searchParams;
   const pending = await listPendingApprovals();
+  const settings = await getCompanySettings();
 
   const withPhotos = await Promise.all(
     pending.map(async (estimate) => ({
@@ -120,6 +122,16 @@ export default async function ApprovalsPage({
                   thicknessMm={estimate.thickness_mm}
                   holeCount={estimate.hole_count}
                   holeDiameterMm={estimate.hole_diameter_mm ?? undefined}
+                  holeRows={
+                    estimate.hole_rows === 2
+                      ? 2
+                      : estimate.hole_rows === 3
+                        ? 3
+                        : 1
+                  }
+                  holeOffset={Boolean(estimate.hole_offset)}
+                  holeRowSpacingMm={settings.hole_row_spacing_mm}
+                  holeOffsetMm={settings.hole_offset_mm}
                   edgeProfile={estimate.edge_profile}
                   topBevelRuns={estimate.bevel_runs_per_side}
                   leadingEdgeRuns={estimate.leading_edge_runs_per_side}
@@ -142,6 +154,8 @@ export default async function ApprovalsPage({
                     <span className="font-medium">
                       {estimate.hole_count} × Ø
                       {estimate.hole_diameter_mm ?? "—"} mm
+                      {estimate.hole_rows > 1 ? ` (${estimate.hole_rows} row)` : ""}
+                      {estimate.hole_offset ? ", offset" : ""}
                     </span>
 
                     <span className="text-slate-500">Coated area</span>
