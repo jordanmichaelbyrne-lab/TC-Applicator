@@ -6,7 +6,7 @@ export default async function SettingsLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { isAdmin } = await getCurrentUserAndCompany();
+  await getCurrentUserAndCompany();
 
   const tabs = [
     { href: "/settings", label: "Profile" },
@@ -14,11 +14,8 @@ export default async function SettingsLayout({
     { href: "/settings/notifications", label: "Notifications" },
     { href: "/settings/whats-new", label: "What's New" },
     { href: "/settings/support", label: "Support Request" },
+    { href: "/settings/team", label: "Team" },
   ];
-
-  if (isAdmin) {
-    tabs.push({ href: "/settings/team", label: "Team" });
-  }
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-6">

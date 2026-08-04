@@ -120,11 +120,7 @@ export type CompanyTeamMember = {
 };
 
 export async function listOwnCompanyMembers() {
-  const { supabase, companyId, isAdmin } = await getCurrentUserAndCompany();
-
-  if (!isAdmin) {
-    throw new Error("Only a company admin can view this.");
-  }
+  const { supabase, companyId } = await getCurrentUserAndCompany();
 
   const { data, error } = await supabase
     .from("profiles")
