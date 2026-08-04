@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { login } from "./actions";
 import { createClient } from "@/app/lib/supabase/server";
 import Link from "next/link";
+import SubmitButton from "@/components/ui/SubmitButton";
 
 type LoginPageProps = {
   searchParams: Promise<{
@@ -71,12 +72,12 @@ export default async function LoginPage({
             />
           </label>
 
-          <button
-            type="submit"
+          <SubmitButton
+            pendingText="Signing in…"
             className="w-full rounded bg-slate-900 px-4 py-2 font-medium text-white hover:bg-slate-800"
           >
             Sign In
-          </button>
+          </SubmitButton>
         </form>
 
         <p className="mt-4 text-center text-sm text-slate-600">
