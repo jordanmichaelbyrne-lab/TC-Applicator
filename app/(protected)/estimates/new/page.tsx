@@ -1647,6 +1647,22 @@ function NumberField({
   suffix,
   step = 1,
 }: NumberFieldProps) {
+  const [text, setText] = useState(String(value));
+
+  // Keep the field's own text in sync when the value changes from
+  // outside (e.g. loading a saved part/pattern/estimate) — but not
+  // while the user is actively typing in THIS field, or every
+  // keystroke's re-render would fight what they just typed.
+  useEffect(() => {
+    setText(String(value));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  function commit(raw: string) {
+    const parsed = Number(raw);
+    onChange(Number.isFinite(parsed) && raw.trim() !== "" ? parsed : 0);
+  }
+
   return (
     <label className="block">
       <span className="mb-1 block text-sm font-medium">
@@ -1658,10 +1674,20 @@ function NumberField({
           type="number"
           min="0"
           step={step}
-          value={value}
-          onChange={(event) =>
-            onChange(Number(event.target.value) || 0)
-          }
+          value={text}
+          onChange={(event) => {
+            const raw = event.target.value;
+            setText(raw);
+
+            // Only push a live number up while it parses cleanly —
+            // lets the field sit empty or mid-edit (e.g. "12.") without
+            // being forced back to 0, while calculations elsewhere
+            // still update as soon as a valid number is typed.
+            if (raw.trim() !== "" && Number.isFinite(Number(raw))) {
+              onChange(Number(raw));
+            }
+          }}
+          onBlur={(event) => commit(event.target.value)}
           className={
             suffix
               ? "min-w-0 flex-1 rounded-l border border-slate-300 px-3 py-2"
