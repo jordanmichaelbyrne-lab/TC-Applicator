@@ -12,7 +12,6 @@ export default async function SettingsLayout({
     { href: "/settings", label: "Profile" },
     { href: "/settings/password", label: "Password" },
     { href: "/settings/notifications", label: "Notifications" },
-    { href: "/settings/whats-new", label: "What's New" },
     { href: "/settings/support", label: "Support Request" },
     { href: "/settings/team", label: "Team" },
   ];
