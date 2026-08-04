@@ -85,7 +85,7 @@ export async function submitSupportRequest(input: {
     throw new Error("Please fill in both a subject and a message.");
   }
 
-  const recipients = await getPlatformAdminEmails(supabase);
+  const recipients = await getPlatformAdminEmails();
 
   if (recipients.length === 0) {
     throw new Error(

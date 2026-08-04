@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getCurrentUser, getCurrentUserAndCompany } from "@/app/lib/repositories/tenant";
+import { createAdminClient } from "@/app/lib/supabase/admin";
 import { sendEmail, emailTemplate, APP_URL } from "@/app/lib/email/brevo";
 
 export type SignupRequestStatus = "pending" | "approved" | "rejected";
@@ -24,7 +25,16 @@ export type SignupRequestRow = {
 
 type Supabase = Awaited<ReturnType<typeof getCurrentUser>>["supabase"];
 
-export async function getPlatformAdminEmails(supabase: Supabase) {
+/**
+ * Uses the service-role client, not the calling user's own session
+ * client — this must resolve correctly even when called by a
+ * brand-new signup user with no company and no elevated access yet
+ * (e.g. from ensureOwnSignupRequest), who would otherwise be blocked
+ * by RLS from ever seeing a platform admin's profile row.
+ */
+export async function getPlatformAdminEmails() {
+  const supabase = createAdminClient();
+
   const { data, error } = await supabase
     .from("profiles")
     .select("email")
@@ -57,11 +67,8 @@ export async function getCompanyAdminEmails(supabase: Supabase, companyId: strin
   return (data ?? []).map((row) => row.email as string).filter(Boolean);
 }
 
-async function notifyNewSignupRequest(
-  supabase: Supabase,
-  request: SignupRequestRow
-) {
-  const recipients = await getPlatformAdminEmails(supabase);
+async function notifyNewSignupRequest(request: SignupRequestRow) {
+  const recipients = await getPlatformAdminEmails();
 
   if (recipients.length === 0) {
     return;
@@ -165,7 +172,7 @@ export async function createSignupRequest(input: {
   }
 
   const request = data as SignupRequestRow;
-  await notifyNewSignupRequest(supabase, request);
+  await notifyNewSignupRequest(request);
 
   return request;
 }
@@ -251,7 +258,7 @@ export async function ensureOwnSignupRequest() {
   }
 
   const request = created as SignupRequestRow;
-  await notifyNewSignupRequest(supabase, request);
+  await notifyNewSignupRequest(request);
 
   return request;
 }
