@@ -3,6 +3,8 @@
 import { useState } from "react";
 import CoatingLayout from "@/components/drawing/CoatingLayout";
 
+type EdgeProfile = "single-bevel" | "double-bevel" | "square-edge";
+
 type QuoteSpecSheetProps = {
   quoteNumber: string;
   quoteDate: string;
@@ -26,6 +28,8 @@ type QuoteSpecSheetProps = {
   holeDiameterMm: number;
   holeRows?: 1 | 2 | 3;
   holeOffset?: boolean;
+  holeRowSpacingMm?: number;
+  holeOffsetMm?: number;
 
   bevelRunsPerSide: number;
   leadingEdgeRunsPerSide: number;
@@ -99,6 +103,8 @@ export default function QuoteSpecSheet({
   holeDiameterMm,
   holeRows = 1,
   holeOffset = false,
+  holeRowSpacingMm = 50,
+  holeOffsetMm = 75,
 
   bevelRunsPerSide,
   leadingEdgeRunsPerSide,
@@ -123,6 +129,25 @@ export default function QuoteSpecSheet({
 }: QuoteSpecSheetProps) {
   const [variant, setVariant] = useState<PrintVariant>("workshop");
   const isCustomerCopy = variant === "customer";
+
+  // profileFamily is passed as the estimate's actual edge_profile
+  // value ("single-bevel" | "double-bevel" | "square-edge") by the
+  // caller — fall back to double-bevel only if it's something
+  // unexpected, so the drawing never silently defaults away from
+  // what the part actually is.
+  const edgeProfile: EdgeProfile =
+    profileFamily === "single-bevel" ||
+    profileFamily === "double-bevel" ||
+    profileFamily === "square-edge"
+      ? profileFamily
+      : "double-bevel";
+
+  // eyebrowType arrives as a plain string prop — narrow it to what
+  // CoatingLayout actually accepts, so the drawing shows eyebrows
+  // whenever the estimate actually has them instead of silently
+  // defaulting to "none".
+  const normalisedEyebrowType: "none" | "short" | "full" =
+    eyebrowType === "short" || eyebrowType === "full" ? eyebrowType : "none";
 
   function printAs(nextVariant: PrintVariant) {
     setVariant(nextVariant);
@@ -343,9 +368,13 @@ export default function QuoteSpecSheet({
               holeDiameterMm={holeDiameterMm}
               holeRows={holeRows}
               holeOffset={holeOffset}
+              holeRowSpacingMm={holeRowSpacingMm}
+              holeOffsetMm={holeOffsetMm}
+              edgeProfile={edgeProfile}
               topBevelRuns={bevelRunsPerSide}
               leadingEdgeRuns={leadingEdgeRunsPerSide}
               bottomFaceRuns={bottomFaceRunsPerSide}
+              eyebrowType={normalisedEyebrowType}
               eyebrowsPerHole={eyebrowsPerHole}
             />
           </div>

@@ -157,6 +157,8 @@ export default async function DrawingDetailPage({
           holeDiameterMm={estimate.hole_diameter_mm ?? 0}
           holeRows={estimate.hole_rows === 2 ? 2 : estimate.hole_rows === 3 ? 3 : 1}
           holeOffset={Boolean(estimate.hole_offset)}
+          holeRowSpacingMm={settings.hole_row_spacing_mm}
+          holeOffsetMm={settings.hole_offset_mm}
           bevelRunsPerSide={estimate.bevel_runs_per_side}
           leadingEdgeRunsPerSide={estimate.leading_edge_runs_per_side}
           bottomFaceRunsPerSide={estimate.bottom_face_runs_per_side}
