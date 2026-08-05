@@ -275,7 +275,7 @@ export default function CoatingLayout({
         />
 
         {Array.from({ length: safeBottomFaceRuns }).map((_, index) => {
-          const offset = 14 + index * 13;
+          const offset = 6 + index * 13;
 
           return (
             <g key={`bottom-face-plan-${index}`}>
@@ -445,55 +445,109 @@ export default function CoatingLayout({
 
         <polygon points={profilePoints} fill={STEEL_FILL} stroke={LINE_COLOUR} strokeWidth="2" />
 
+        {/* Each bevel run's 25mm width is measured ALONG the slope
+            (its length travels into the page, the axis this
+            cross-section can't show) — so runs tile as short dashes
+            along the bevel line, not as near-duplicate lines each
+            stretching almost the full slope. */}
         {!isSquare &&
           Array.from({ length: topBevelRuns }).map((_, index) => {
-            const offset = 7 + index * 11;
+            // Fixed-size dash (not the slope divided evenly by run
+            // count) — otherwise a single run would stretch across
+            // nearly the whole bevel. Tiles from the BOTTOM of the
+            // bevel (where it meets the leading edge, t=1) upward
+            // toward the top corner (t=0) as more runs are added.
+            const gapFrac = 0.05;
+            let dashFrac = 0.35;
+            const totalNeeded = topBevelRuns * dashFrac + (topBevelRuns - 1) * gapFrac;
+            if (totalNeeded > 0.95) {
+              dashFrac = (0.95 - (topBevelRuns - 1) * gapFrac) / topBevelRuns;
+            }
+
+            const step = dashFrac + gapFrac;
+
+            function lerp(
+              start: { x: number; y: number },
+              end: { x: number; y: number },
+              t: number
+            ) {
+              return {
+                x: start.x + (end.x - start.x) * t,
+                y: start.y + (end.y - start.y) * t,
+              };
+            }
 
             return (
               <g key={`bevel-run-${index}`}>
-                {frontBevelLine && (
-                  <line
-                    x1={frontBevelLine.start.x + offset * 0.2}
-                    y1={frontBevelLine.start.y + offset * 0.55}
-                    x2={frontBevelLine.end.x - offset * 0.75}
-                    y2={frontBevelLine.end.y - offset * 0.55}
-                    stroke={COATING_COLOUR}
-                    strokeWidth="7"
-                  />
-                )}
-                {backBevelLine && (
-                  <line
-                    x1={backBevelLine.start.x + offset * 0.75}
-                    y1={backBevelLine.start.y - offset * 0.55}
-                    x2={backBevelLine.end.x - offset * 0.2}
-                    y2={backBevelLine.end.y + offset * 0.55}
-                    stroke={COATING_COLOUR}
-                    strokeWidth="7"
-                  />
-                )}
+                {frontBevelLine && (() => {
+                  // frontBevelLine.end IS the bottom (where it meets
+                  // the leading edge) — anchor at t=1, step toward t=0.
+                  const tEnd = 1 - index * step;
+                  const tStart = tEnd - dashFrac;
+                  const from = lerp(frontBevelLine.start, frontBevelLine.end, tStart);
+                  const to = lerp(frontBevelLine.start, frontBevelLine.end, tEnd);
+                  return (
+                    <line
+                      x1={from.x}
+                      y1={from.y}
+                      x2={to.x}
+                      y2={to.y}
+                      stroke={COATING_COLOUR}
+                      strokeWidth="7"
+                    />
+                  );
+                })()}
+                {backBevelLine && (() => {
+                  // backBevelLine.start IS the bottom (opposite point
+                  // order to the front line) — anchor at t=0 instead.
+                  const tStart = index * step;
+                  const tEnd = tStart + dashFrac;
+                  const from = lerp(backBevelLine.start, backBevelLine.end, tStart);
+                  const to = lerp(backBevelLine.start, backBevelLine.end, tEnd);
+                  return (
+                    <line
+                      x1={from.x}
+                      y1={from.y}
+                      x2={to.x}
+                      y2={to.y}
+                      stroke={COATING_COLOUR}
+                      strokeWidth="7"
+                    />
+                  );
+                })()}
               </g>
             );
           })}
 
+        {/* Same fix as the bevel runs — a leading-edge run's 25mm
+            width is measured along the face's own height (vertical
+            here), so runs tile top-to-bottom as short dashes at a
+            single x position, not as parallel lines each spanning
+            the full face height offset sideways. */}
         {Array.from({ length: leadingEdgeRuns }).map((_, index) => {
-          const offset = index * 9;
+          const segFrac = 1 / leadingEdgeRuns;
+          const gap = segFrac * 0.06;
+          const faceTop = leadingFaceTopY + 5;
+          const faceBottom = profileBottom - 6;
+          const yStart = faceTop + (faceBottom - faceTop) * (index * segFrac + gap);
+          const yEnd = faceTop + (faceBottom - faceTop) * ((index + 1) * segFrac - gap);
 
           return (
             <g key={`leading-run-${index}`}>
               <line
-                x1={frontLeadingX - 5 - offset}
-                y1={leadingFaceTopY + 5}
-                x2={frontLeadingX - 5 - offset}
-                y2={profileBottom - 6}
+                x1={frontLeadingX - 5}
+                y1={yStart}
+                x2={frontLeadingX - 5}
+                y2={yEnd}
                 stroke={COATING_COLOUR}
                 strokeWidth="7"
               />
               {backLeadingX !== null && (
                 <line
-                  x1={backLeadingX + 5 + offset}
-                  y1={leadingFaceTopY + 5}
-                  x2={backLeadingX + 5 + offset}
-                  y2={profileBottom - 6}
+                  x1={backLeadingX + 5}
+                  y1={yStart}
+                  x2={backLeadingX + 5}
+                  y2={yEnd}
                   stroke={COATING_COLOUR}
                   strokeWidth="7"
                 />
@@ -502,21 +556,56 @@ export default function CoatingLayout({
           );
         })}
 
-        {Array.from({ length: bottomFaceRuns }).map((_, index) => {
-          const y = profileBottom - 5 - index * 11;
+        {/* Bottom-face runs actually travel the full LENGTH of the
+            edge — the axis going into the page in this cross-section
+            view, not left-right. Each run shows as a short 25mm-scale
+            dash near the relevant side (front/back). Multiple runs on
+            the same side tile side by side, extending further inward
+            from the corner — not stacked in layers on top of each
+            other, which would misrepresent them as being at different
+            heights on a face that's actually flat. */}
+        {(() => {
+          const dashLength = Math.min(50, profileWidth * 0.07);
+          const dashGap = 2;
+          const y = profileBottom - 4;
 
-          return (
-            <line
-              key={`bottom-run-${index}`}
-              x1={profileX + 18}
-              y1={y}
-              x2={profileX + profileWidth - 18}
-              y2={y}
-              stroke={COATING_COLOUR}
-              strokeWidth="7"
-            />
-          );
-        })}
+          return Array.from({ length: bottomFaceRuns }).map((_, index) => {
+            // Match the bevel/leading-edge convention: "front" is the
+            // right/beveled side (profileX + profileWidth), "back" is
+            // the left side (profileX) — front always shows, back
+            // only when the part isn't hole-offset. Previously these
+            // were swapped relative to the bevel/leading-edge dashes,
+            // so a holeOffset part suppressed the wrong side.
+            const frontEnd = profileX + profileWidth - 8 - index * (dashLength + dashGap);
+            const frontStart = frontEnd - dashLength;
+
+            const backStart = profileX + 8 + index * (dashLength + dashGap);
+            const backEnd = backStart + dashLength;
+
+            return (
+              <g key={`bottom-run-${index}`}>
+                <line
+                  x1={frontStart}
+                  y1={y}
+                  x2={frontEnd}
+                  y2={y}
+                  stroke={COATING_COLOUR}
+                  strokeWidth="7"
+                />
+                {!holeOffset && (
+                  <line
+                    x1={backStart}
+                    y1={y}
+                    x2={backEnd}
+                    y2={y}
+                    stroke={COATING_COLOUR}
+                    strokeWidth="7"
+                  />
+                )}
+              </g>
+            );
+          });
+        })()}
 
         <g>
           <line
