@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import CoatingLayout from "@/components/drawing/CoatingLayout";
+import CoatingLayout3D from "@/components/drawing/CoatingLayout3D";
 import {
   saveDraftAction,
   submitForApprovalAction,
@@ -1499,6 +1500,32 @@ export default function NewEstimatePage() {
             </div>
           </aside>
         </div>
+
+        {showForm && (
+          <section className="print-hidden mt-5 rounded-lg border border-slate-300 bg-white shadow-sm">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+              <h3 className="font-semibold">3D Preview</h3>
+              <span className="text-xs font-medium text-slate-500">
+                Illustrative — not to a single consistent scale
+              </span>
+            </div>
+
+            <div className="p-4">
+              <CoatingLayout3D
+                lengthMm={lengthMm}
+                widthMm={widthMm}
+                thicknessMm={thicknessMm}
+                holeCount={holeCount}
+                holeRows={holeRows}
+                holeOffset={holeOffset}
+                edgeProfile={edgeProfile}
+                topBevelRuns={topBevelRuns}
+                leadingEdgeRuns={leadingEdgeRuns}
+                bottomFaceRuns={bottomFaceRuns}
+              />
+            </div>
+          </section>
+        )}
 
         {!isApproved && (
           <div className="print-watermark" aria-hidden="true">
