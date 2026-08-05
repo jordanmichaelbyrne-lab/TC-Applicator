@@ -79,12 +79,21 @@ export default async function AdminCompanyDetailPage({
             <p className="text-sm text-slate-500">Read-only support view</p>
           </div>
 
-          <Link
-            href="/admin/companies"
-            className="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50"
-          >
-            Back to Companies
-          </Link>
+          <div className="flex gap-3">
+            <Link
+              href={`/admin/companies/${overview.id}/reports`}
+              className="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50"
+            >
+              View Reports
+            </Link>
+
+            <Link
+              href="/admin/companies"
+              className="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50"
+            >
+              Back to Companies
+            </Link>
+          </div>
         </div>
 
         {error && (

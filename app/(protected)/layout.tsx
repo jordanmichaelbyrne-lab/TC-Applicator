@@ -111,6 +111,15 @@ export default async function ProtectedLayout({
     navLinks.push({ href: "/cost-analysis", label: "Cost Analysis" });
   }
 
+  // Deliberately isDirector only, not isPlatformAdmin — TC Support
+  // reaches a specific company's reports through Admin > All
+  // Companies > [company] instead, never a generic top-level link
+  // (which would otherwise just show whichever company their own
+  // profile happens to belong to, defeating cross-company isolation).
+  if (isDirector) {
+    navLinks.push({ href: "/reports", label: "Reports" });
+  }
+
   if (isPlatformAdmin) {
     navLinks.push({ href: "/admin/signups", label: "Signup Requests" });
     navLinks.push({ href: "/admin/companies", label: "All Companies" });
