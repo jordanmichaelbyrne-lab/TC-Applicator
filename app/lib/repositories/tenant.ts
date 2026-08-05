@@ -33,7 +33,7 @@ export async function getCurrentUserAndCompany() {
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("company_id, full_name, is_admin, is_platform_admin")
+    .select("company_id, full_name, is_admin, is_platform_admin, is_director")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -58,5 +58,9 @@ export async function getCurrentUserAndCompany() {
     fullName: profile.full_name as string | null,
     isAdmin: Boolean(profile.is_admin),
     isPlatformAdmin: Boolean(profile.is_platform_admin),
+    // Director is company-scoped, independent of is_admin — grants
+    // access to Cost Analysis and (later) reporting, without also
+    // implying team/estimate admin rights.
+    isDirector: Boolean(profile.is_director),
   };
 }

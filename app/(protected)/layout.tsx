@@ -7,8 +7,9 @@ import { getSignedCompanyLogoUrl } from "@/app/lib/repositories/platformOverview
 import { ensureOwnSignupRequest } from "@/app/lib/repositories/signupRequests";
 import TopNav from "@/components/nav/TopNav";
 
-function roleLabel(isPlatformAdmin: boolean, isAdmin: boolean) {
+function roleLabel(isPlatformAdmin: boolean, isDirector: boolean, isAdmin: boolean) {
   if (isPlatformAdmin) return "TC Applicator Support";
+  if (isDirector) return "Director";
   if (isAdmin) return "Administrator";
   return "Member";
 }
@@ -85,6 +86,7 @@ export default async function ProtectedLayout({
     fullName,
     isAdmin,
     isPlatformAdmin,
+    isDirector,
   } = context;
 
   const companyLogoUrl = companyLogoPath
@@ -103,6 +105,10 @@ export default async function ProtectedLayout({
   if (isAdmin) {
     navLinks.push({ href: "/team-requests", label: "Team Requests" });
     navLinks.push({ href: "/settings/coating-defaults", label: "Coating Defaults" });
+  }
+
+  if (isDirector || isPlatformAdmin) {
+    navLinks.push({ href: "/cost-analysis", label: "Cost Analysis" });
   }
 
   if (isPlatformAdmin) {
@@ -139,7 +145,7 @@ export default async function ProtectedLayout({
                 </p>
                 <p className="text-slate-500">
                   {fullName ? `${fullName} · ` : ""}
-                  {roleLabel(isPlatformAdmin, isAdmin)}
+                  {roleLabel(isPlatformAdmin, isDirector, isAdmin)}
                 </p>
               </div>
             </div>

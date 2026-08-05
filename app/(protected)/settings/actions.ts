@@ -8,6 +8,7 @@ import {
   updateOwnNotificationPreference,
   submitSupportRequest,
   setTeamMemberAdmin,
+  setTeamMemberDirector,
   removeTeamMember,
 } from "@/app/lib/repositories/userSettings";
 
@@ -89,6 +90,26 @@ export async function setTeamMemberAdminAction(formData: FormData) {
 
   try {
     await setTeamMemberAdmin(memberId, makeAdmin);
+  } catch (error) {
+    redirect(
+      `/settings/team?error=${encodeURIComponent(errorMessage(error, "Unable to update that team member."))}`
+    );
+  }
+
+  revalidatePath("/settings/team");
+  redirect("/settings/team?success=Team%20updated.");
+}
+
+export async function setTeamMemberDirectorAction(formData: FormData) {
+  const memberId = String(formData.get("memberId") ?? "");
+  const makeDirector = formData.get("makeDirector") === "true";
+
+  if (!memberId) {
+    redirect("/settings/team?error=Missing%20member%20ID.");
+  }
+
+  try {
+    await setTeamMemberDirector(memberId, makeDirector);
   } catch (error) {
     redirect(
       `/settings/team?error=${encodeURIComponent(errorMessage(error, "Unable to update that team member."))}`

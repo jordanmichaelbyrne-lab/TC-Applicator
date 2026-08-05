@@ -2,6 +2,7 @@ import { getCurrentUserAndCompany } from "@/app/lib/repositories/tenant";
 import { listOwnCompanyMembers } from "@/app/lib/repositories/userSettings";
 import {
   setTeamMemberAdminAction,
+  setTeamMemberDirectorAction,
   removeTeamMemberAction,
 } from "../actions";
 
@@ -11,8 +12,11 @@ type PageProps = {
 
 export default async function TeamSettingsPage({ searchParams }: PageProps) {
   const { error, success } = await searchParams;
-  const { isAdmin, user } = await getCurrentUserAndCompany();
+  const { isAdmin, isDirector, isPlatformAdmin, user } =
+    await getCurrentUserAndCompany();
   const members = await listOwnCompanyMembers();
+
+  const canManageDirector = isDirector || isPlatformAdmin;
 
   return (
     <div className="space-y-6">
@@ -59,7 +63,13 @@ export default async function TeamSettingsPage({ searchParams }: PageProps) {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  {member.is_director && (
+                    <span className="inline-flex rounded-full border border-purple-300 bg-purple-50 px-2.5 py-1 text-xs font-semibold text-purple-800">
+                      Director
+                    </span>
+                  )}
+
                   <span
                     className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${
                       member.is_admin
@@ -69,6 +79,23 @@ export default async function TeamSettingsPage({ searchParams }: PageProps) {
                   >
                     {member.is_admin ? "Admin" : "Member"}
                   </span>
+
+                  {canManageDirector && (
+                    <form action={setTeamMemberDirectorAction}>
+                      <input type="hidden" name="memberId" value={member.id} />
+                      <input
+                        type="hidden"
+                        name="makeDirector"
+                        value={member.is_director ? "false" : "true"}
+                      />
+                      <button
+                        type="submit"
+                        className="rounded border border-purple-300 bg-white px-3 py-1.5 text-xs font-medium text-purple-800 hover:bg-purple-50"
+                      >
+                        {member.is_director ? "Remove director" : "Make director"}
+                      </button>
+                    </form>
+                  )}
 
                   {isAdmin && (
                     <>

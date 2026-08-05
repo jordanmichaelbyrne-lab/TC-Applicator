@@ -117,6 +117,7 @@ export type CompanyTeamMember = {
   full_name: string | null;
   email: string | null;
   is_admin: boolean;
+  is_director: boolean;
 };
 
 export async function listOwnCompanyMembers() {
@@ -124,7 +125,7 @@ export async function listOwnCompanyMembers() {
 
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, full_name, email, is_admin")
+    .select("id, full_name, email, is_admin, is_director")
     .eq("company_id", companyId)
     .order("full_name");
 
@@ -171,6 +172,31 @@ export async function setTeamMemberAdmin(memberId: string, makeAdmin: boolean) {
   const { error } = await supabase
     .from("profiles")
     .update({ is_admin: makeAdmin })
+    .eq("id", memberId)
+    .eq("company_id", companyId);
+
+  if (error) {
+    throw new Error(`Unable to update that team member: ${error.message}`);
+  }
+}
+
+/**
+ * Deliberately gated tighter than setTeamMemberAdmin — Director is
+ * meant to sit above admin (visibility into Cost Analysis and future
+ * financial reporting), so only an existing director or TC Support
+ * can appoint another one, not any regular company admin.
+ */
+export async function setTeamMemberDirector(memberId: string, makeDirector: boolean) {
+  const { supabase, companyId, isDirector, isPlatformAdmin } =
+    await getCurrentUserAndCompany();
+
+  if (!isDirector && !isPlatformAdmin) {
+    throw new Error("Only a director can do this.");
+  }
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ is_director: makeDirector })
     .eq("id", memberId)
     .eq("company_id", companyId);
 
