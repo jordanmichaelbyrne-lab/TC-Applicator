@@ -78,7 +78,18 @@ export default async function ApprovalsPage({
           </div>
         )}
 
-        {withPhotos.map(({ estimate, photoUrl }) => (
+        {withPhotos.map(({ estimate, photoUrl }) => {
+          // Prefer the settings snapshotted onto the estimate at
+          // submission time, so what the admin reviews here matches
+          // exactly what the salesperson calculated — not whatever
+          // Coating Defaults happen to be live right now. Falls back
+          // to current settings only for pre-migration rows.
+          const effectiveRunWidthMm = estimate.run_width_mm ?? settings.run_width_mm;
+          const effectiveHoleRowSpacingMm =
+            estimate.hole_row_spacing_mm ?? settings.hole_row_spacing_mm;
+          const effectiveHoleOffsetMm = estimate.hole_offset_mm ?? settings.hole_offset_mm;
+
+          return (
           <section
             key={estimate.id}
             className="rounded-lg border border-slate-300 bg-white shadow-sm"
@@ -130,14 +141,15 @@ export default async function ApprovalsPage({
                         : 1
                   }
                   holeOffset={Boolean(estimate.hole_offset)}
-                  holeRowSpacingMm={settings.hole_row_spacing_mm}
-                  holeOffsetMm={settings.hole_offset_mm}
+                  holeRowSpacingMm={effectiveHoleRowSpacingMm}
+                  holeOffsetMm={effectiveHoleOffsetMm}
                   edgeProfile={estimate.edge_profile}
                   topBevelRuns={estimate.bevel_runs_per_side}
                   leadingEdgeRuns={estimate.leading_edge_runs_per_side}
                   bottomFaceRuns={estimate.bottom_face_runs_per_side}
                   eyebrowType={estimate.eyebrow_type}
                   eyebrowsPerHole={estimate.short_eyebrows_per_hole}
+                  runWidthMm={effectiveRunWidthMm}
                 />
               </div>
 
@@ -235,7 +247,8 @@ export default async function ApprovalsPage({
               </form>
             </div>
           </section>
-        ))}
+          );
+        })}
     </div>
   );
 }

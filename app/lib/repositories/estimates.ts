@@ -47,6 +47,13 @@ export type EstimateRow = {
   approved_at: string | null;
   created_at: string;
   updated_at: string;
+  // Snapshot of the coating-defaults settings active at save time —
+  // null on rows created before this snapshot existed, in which case
+  // callers fall back to the company's current settings.
+  run_width_mm: number | null;
+  eyebrow_length_mm: number | null;
+  hole_row_spacing_mm: number | null;
+  hole_offset_mm: number | null;
 };
 
 export type CreateEstimateInput = {
@@ -78,6 +85,14 @@ export type CreateEstimateInput = {
   sellRatePerCm2: number;
   totalSellPrice: number;
   notes?: string;
+  // The coating-defaults settings actually in effect when this
+  // estimate was calculated — snapshotted onto the row so later
+  // changes to company settings never alter how this estimate's
+  // drawing displays after the fact.
+  runWidthMm: number;
+  eyebrowLengthMm: number;
+  holeRowSpacingMm: number;
+  holeOffsetMm: number;
 };
 
 function mapInputToRow(input: CreateEstimateInput, companyId: string, userId: string, status: EstimateStatus) {
@@ -114,6 +129,10 @@ function mapInputToRow(input: CreateEstimateInput, companyId: string, userId: st
     status,
     created_by: userId,
     updated_by: userId,
+    run_width_mm: input.runWidthMm,
+    eyebrow_length_mm: input.eyebrowLengthMm,
+    hole_row_spacing_mm: input.holeRowSpacingMm,
+    hole_offset_mm: input.holeOffsetMm,
   };
 }
 

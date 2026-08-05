@@ -106,8 +106,19 @@ export default async function DrawingDetailPage({
 
   const settings = await getCompanySettings();
 
+  // Prefer the settings snapshotted onto the estimate at save time —
+  // only fall back to the company's current settings for estimates
+  // created before that snapshot existed (run_width_mm etc. will be
+  // null on those older rows). This is what stops a later change to
+  // Coating Defaults from retroactively altering an already-approved
+  // drawing's displayed run width, eyebrow length, or hole layout.
+  const effectiveRunWidthMm = estimate.run_width_mm ?? settings.run_width_mm;
+  const effectiveEyebrowLengthMm = estimate.eyebrow_length_mm ?? settings.eyebrow_length_mm;
+  const effectiveHoleRowSpacingMm = estimate.hole_row_spacing_mm ?? settings.hole_row_spacing_mm;
+  const effectiveHoleOffsetMm = estimate.hole_offset_mm ?? settings.hole_offset_mm;
+
   const { totalFullLengthRuns, eyebrowQuantity, fullLengthAreaCm2, eyebrowAreaCm2 } =
-    computeAreaBreakdown(estimate, settings.run_width_mm, settings.eyebrow_length_mm);
+    computeAreaBreakdown(estimate, effectiveRunWidthMm, effectiveEyebrowLengthMm);
 
   const costPrice = estimate.total_carbide_cost ?? 0;
   const sellPrice = estimate.total_sell_price ?? 0;
@@ -157,13 +168,14 @@ export default async function DrawingDetailPage({
           holeDiameterMm={estimate.hole_diameter_mm ?? 0}
           holeRows={estimate.hole_rows === 2 ? 2 : estimate.hole_rows === 3 ? 3 : 1}
           holeOffset={Boolean(estimate.hole_offset)}
-          holeRowSpacingMm={settings.hole_row_spacing_mm}
-          holeOffsetMm={settings.hole_offset_mm}
+          holeRowSpacingMm={effectiveHoleRowSpacingMm}
+          holeOffsetMm={effectiveHoleOffsetMm}
           bevelRunsPerSide={estimate.bevel_runs_per_side}
           leadingEdgeRunsPerSide={estimate.leading_edge_runs_per_side}
           bottomFaceRunsPerSide={estimate.bottom_face_runs_per_side}
           eyebrowType={estimate.eyebrow_type}
           eyebrowsPerHole={estimate.short_eyebrows_per_hole}
+          runWidthMm={effectiveRunWidthMm}
           totalFullLengthRuns={totalFullLengthRuns}
           eyebrowQuantity={eyebrowQuantity}
           fullLengthAreaCm2={fullLengthAreaCm2}

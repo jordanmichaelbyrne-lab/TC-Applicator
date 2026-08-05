@@ -36,6 +36,7 @@ type QuoteSpecSheetProps = {
   bottomFaceRunsPerSide: number;
   eyebrowType: string;
   eyebrowsPerHole: number;
+  runWidthMm?: number;
 
   totalFullLengthRuns: number;
   eyebrowQuantity: number;
@@ -111,6 +112,7 @@ export default function QuoteSpecSheet({
   bottomFaceRunsPerSide,
   eyebrowType,
   eyebrowsPerHole,
+  runWidthMm = 25,
 
   totalFullLengthRuns,
   eyebrowQuantity,
@@ -376,6 +378,7 @@ export default function QuoteSpecSheet({
               bottomFaceRuns={bottomFaceRunsPerSide}
               eyebrowType={normalisedEyebrowType}
               eyebrowsPerHole={eyebrowsPerHole}
+              runWidthMm={runWidthMm}
             />
           </div>
 

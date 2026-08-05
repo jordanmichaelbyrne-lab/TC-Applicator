@@ -596,6 +596,13 @@ export default function NewEstimatePage() {
       totalCarbideCost: calculations.totalCarbideCost,
       sellRatePerCm2,
       totalSellPrice: calculations.totalSellPrice,
+      // Snapshot the settings actually used for this calculation, so
+      // a later change to company Coating Defaults never alters how
+      // this estimate's drawing/spec sheet displays after the fact.
+      runWidthMm,
+      eyebrowLengthMm,
+      holeRowSpacingMm,
+      holeOffsetMm,
     };
   }
 
@@ -1068,6 +1075,7 @@ export default function NewEstimatePage() {
                                     ? pattern.shortEyebrowsPerHole
                                     : 0
                                 }
+                                runWidthMm={runWidthMm}
                               />
                             </div>
 
@@ -1444,6 +1452,7 @@ export default function NewEstimatePage() {
                       eyebrowsPerHole={
                         eyebrowType === "short" ? shortEyebrowsPerHole : 0
                       }
+                      runWidthMm={runWidthMm}
                     />
                   </div>
 

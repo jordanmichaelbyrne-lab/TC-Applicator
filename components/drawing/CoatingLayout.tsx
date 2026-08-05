@@ -16,6 +16,7 @@ type CoatingLayoutProps = {
   bottomFaceRuns?: number;
   eyebrowType?: "none" | "short" | "full";
   eyebrowsPerHole?: number;
+  runWidthMm?: number;
 };
 
 const COATING_COLOUR = "#f97316";
@@ -45,8 +46,10 @@ export default function CoatingLayout({
   bottomFaceRuns = 2,
   eyebrowType = "none",
   eyebrowsPerHole = 2,
+  runWidthMm = 25,
 }: CoatingLayoutProps) {
   const safeHoleCount = Math.max(holeCount, 0);
+  const safeLength = Math.max(lengthMm, 1);
   const safeWidth = Math.max(widthMm, 1);
   const safeThickness = Math.max(thicknessMm, 1);
   const safeBottomFaceRuns = Math.max(bottomFaceRuns, 0);
@@ -55,8 +58,28 @@ export default function CoatingLayout({
   const frontX = 90;
   const frontY = 95;
   const frontWidth = 700;
-  const frontHeight = 190;
   const endInset = 20;
+
+  // The plan view used to be a fixed 700x190 box regardless of the
+  // part's actual proportions — a long narrow edge and a short wide
+  // one rendered identically, just with different mm labels. Instead,
+  // derive the height from the real width:length ratio (scaled to the
+  // fixed 700px width), clamped so very long/thin or near-square
+  // parts don't blow out or collapse the rest of the drawing's
+  // fixed-position layout below it.
+  const MIN_FRONT_HEIGHT = 90;
+  const MAX_FRONT_HEIGHT = 400;
+  const BASE_FRONT_HEIGHT = 190; // the original fixed height every downstream y-position below was designed around
+  const rawFrontHeight = frontWidth * (safeWidth / safeLength);
+  const frontHeight = Math.max(
+    MIN_FRONT_HEIGHT,
+    Math.min(MAX_FRONT_HEIGHT, rawFrontHeight)
+  );
+  // How far the plan-view box grew/shrank vs. the original fixed
+  // layout — everything below it (pattern summary, side profile,
+  // legend) shifts down/up by this same amount so a taller box
+  // doesn't start overlapping the fixed-position sections after it.
+  const heightDelta = frontHeight - BASE_FRONT_HEIGHT;
 
   const holeRadius = Math.max(
     7,
@@ -70,12 +93,28 @@ export default function CoatingLayout({
 
   const centreY = frontY + frontHeight / 2;
   const pxPerMm = frontHeight / safeWidth;
-  const maxOffsetPx = frontHeight - 68;
+
+  // Fixed margin needed so the hole marker (guide line + circle)
+  // never clips the plate edge — independent of frontHeight, unlike
+  // the old "+24" / "maxOffsetPx = frontHeight - 68" constants, which
+  // were tuned only for the original fixed 190px-tall box and would
+  // push the offset row PAST vertical centre (the wrong direction)
+  // once very long/narrow parts clamp frontHeight down much smaller.
+  const holeMargin = 26;
+  const maxOffsetPx = Math.max(0, frontHeight - holeMargin * 2);
 
   // The centre point the hole row(s) are built around — either the
   // true centre, or shifted toward the top edge when offset is on.
+  // The shift is the real mm value scaled to px, clipped so it can
+  // never cross past the box's own vertical centre regardless of
+  // how short or tall the box ends up.
   const layoutCentreY = holeOffset
-    ? frontY + endInset + 24 + Math.min(Math.max(holeOffsetMm, 0) * pxPerMm, maxOffsetPx)
+    ? frontY +
+      holeMargin +
+      Math.min(
+        Math.max(holeOffsetMm, 0) * pxPerMm,
+        Math.min(maxOffsetPx, frontHeight / 2 - holeMargin)
+      )
     : centreY;
 
   const rowSpacingPx = Math.min(Math.max(holeRowSpacingMm, 0) * pxPerMm, maxOffsetPx);
@@ -97,7 +136,7 @@ export default function CoatingLayout({
   const lowerEyebrowY = Math.max(...rowYs) + eyebrowGap;
 
   const profileX = 90;
-  const profileY = 410;
+  const profileY = 410 + heightDelta;
   const profileWidth = 700;
 
   const displayedThickness = Math.max(55, Math.min(120, safeThickness * 2.2));
@@ -174,7 +213,7 @@ export default function CoatingLayout({
   return (
     <div className="w-full overflow-x-auto">
       <svg
-        viewBox="0 0 880 640"
+        viewBox={`0 0 880 ${Math.max(500, 640 + heightDelta)}`}
         role="img"
         aria-label="Cutting edge coating layout"
         className="min-w-[760px] w-full"
@@ -225,17 +264,11 @@ export default function CoatingLayout({
           </text>
         </g>
 
-        <polygon
-          points={[
-            `${frontX + endInset},${frontY}`,
-            `${frontX + frontWidth - endInset},${frontY}`,
-            `${frontX + frontWidth},${frontY + endInset}`,
-            `${frontX + frontWidth},${frontY + frontHeight - endInset}`,
-            `${frontX + frontWidth - endInset},${frontY + frontHeight}`,
-            `${frontX + endInset},${frontY + frontHeight}`,
-            `${frontX},${frontY + frontHeight - endInset}`,
-            `${frontX},${frontY + endInset}`,
-          ].join(" ")}
+        <rect
+          x={frontX}
+          y={frontY}
+          width={frontWidth}
+          height={frontHeight}
           fill={STEEL_FILL}
           stroke={LINE_COLOUR}
           strokeWidth="2"
@@ -248,18 +281,18 @@ export default function CoatingLayout({
             <g key={`bottom-face-plan-${index}`}>
               {!holeOffset && (
                 <line
-                  x1={frontX + endInset}
+                  x1={frontX}
                   y1={frontY + offset}
-                  x2={frontX + frontWidth - endInset}
+                  x2={frontX + frontWidth}
                   y2={frontY + offset}
                   stroke={COATING_COLOUR}
                   strokeWidth="11"
                 />
               )}
               <line
-                x1={frontX + endInset}
+                x1={frontX}
                 y1={frontY + frontHeight - offset}
-                x2={frontX + frontWidth - endInset}
+                x2={frontX + frontWidth}
                 y2={frontY + frontHeight - offset}
                 stroke={COATING_COLOUR}
                 strokeWidth="11"
@@ -271,17 +304,17 @@ export default function CoatingLayout({
         {eyebrowType === "full" && (
           <>
             <line
-              x1={frontX + endInset}
+              x1={frontX}
               y1={upperEyebrowY}
-              x2={frontX + frontWidth - endInset}
+              x2={frontX + frontWidth}
               y2={upperEyebrowY}
               stroke={COATING_COLOUR}
               strokeWidth="9"
             />
             <line
-              x1={frontX + endInset}
+              x1={frontX}
               y1={lowerEyebrowY}
-              x2={frontX + frontWidth - endInset}
+              x2={frontX + frontWidth}
               y2={lowerEyebrowY}
               stroke={COATING_COLOUR}
               strokeWidth="9"
@@ -373,7 +406,7 @@ export default function CoatingLayout({
           </text>
         </g>
 
-        <g transform="translate(90 320)">
+        <g transform={`translate(90 ${320 + heightDelta})`}>
           <rect x="0" y="0" width="700" height="54" rx="6" fill="#f8fafc" stroke="#cbd5e1" />
 
           <text x="18" y="21" fontSize="12" fill={MUTED_TEXT}>
@@ -406,7 +439,7 @@ export default function CoatingLayout({
           </text>
         </g>
 
-        <text x="40" y="410" fontSize="18" fontWeight="600">
+        <text x="40" y={profileY} fontSize="18" fontWeight="600">
           {EDGE_PROFILE_LABEL[edgeProfile]} Side Profile
         </text>
 
@@ -507,13 +540,13 @@ export default function CoatingLayout({
           </text>
         </g>
 
-        <g transform="translate(90 600)">
+        <g transform={`translate(90 ${600 + heightDelta})`}>
           <line x1="0" y1="0" x2="42" y2="0" stroke={COATING_COLOUR} strokeWidth="8" />
           <text x="55" y="5" fontSize="13">
             Individual tungsten coating run
           </text>
           <text x="320" y="5" fontSize="13">
-            Standard run width: 25 mm
+            Standard run width: {runWidthMm} mm
           </text>
         </g>
       </svg>
