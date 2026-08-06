@@ -32,6 +32,8 @@ export type EstimateRow = {
   bottom_face_runs_per_side: number;
   eyebrow_type: EyebrowType;
   short_eyebrows_per_hole: number;
+  left_end_runs: number;
+  right_end_runs: number;
   total_area_cm2: number | null;
   carbide_cost_rate_per_cm2: number | null;
   total_carbide_cost: number | null;
@@ -79,6 +81,8 @@ export type CreateEstimateInput = {
   bottomFaceRunsPerSide: number;
   eyebrowType: EyebrowType;
   shortEyebrowsPerHole: number;
+  leftEndRuns: number;
+  rightEndRuns: number;
   totalAreaCm2: number;
   carbideCostRatePerCm2: number;
   totalCarbideCost: number;
@@ -120,6 +124,8 @@ function mapInputToRow(input: CreateEstimateInput, companyId: string, userId: st
     bottom_face_runs_per_side: input.bottomFaceRunsPerSide,
     eyebrow_type: input.eyebrowType,
     short_eyebrows_per_hole: input.shortEyebrowsPerHole,
+    left_end_runs: input.leftEndRuns,
+    right_end_runs: input.rightEndRuns,
     total_area_cm2: input.totalAreaCm2,
     carbide_cost_rate_per_cm2: input.carbideCostRatePerCm2,
     total_carbide_cost: input.totalCarbideCost,

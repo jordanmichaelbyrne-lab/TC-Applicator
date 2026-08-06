@@ -18,13 +18,14 @@ const PROFILE_FAMILIES = [
 
 const PART_CATEGORIES = [
   "Loader Centre Edge",
+  "Loader End Edge",
   "Dozer Centre Edge",
   "Dozer Outer Edge",
-  "Scraper Centre Edge",
-  "Excavator Edge",
   "Dozer End Bit",
+  "Scraper Centre Edge",
   "Scraper Router Bit",
   "Grader Blade",
+  "Excavator Edge",
 ];
 
 export default function NewOemPartPage() {

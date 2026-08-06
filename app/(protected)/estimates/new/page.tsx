@@ -122,6 +122,8 @@ export default function NewEstimatePage() {
   const [bottomFaceRuns, setBottomFaceRuns] = useState(0);
   const [eyebrowType, setEyebrowType] = useState<"none" | "short" | "full">("none");
   const [shortEyebrowsPerHole, setShortEyebrowsPerHole] = useState(2);
+  const [leftEndRuns, setLeftEndRuns] = useState(0);
+  const [rightEndRuns, setRightEndRuns] = useState(0);
 
   const [sellRatePerCm2, setSellRatePerCm2] = useState(0);
 
@@ -266,6 +268,8 @@ export default function NewEstimatePage() {
       setBottomFaceRuns(estimate.bottom_face_runs_per_side);
       setEyebrowType(estimate.eyebrow_type);
       setShortEyebrowsPerHole(estimate.short_eyebrows_per_hole);
+      setLeftEndRuns(estimate.left_end_runs ?? 0);
+      setRightEndRuns(estimate.right_end_runs ?? 0);
 
       setSellRatePerCm2(estimate.sell_rate_per_cm2 ?? 0);
 
@@ -390,6 +394,8 @@ export default function NewEstimatePage() {
     setBottomFaceRuns(0);
     setEyebrowType("none");
     setShortEyebrowsPerHole(2);
+    setLeftEndRuns(0);
+    setRightEndRuns(0);
     setIsCreatingNewPattern(false);
 
     setSaveMessage("");
@@ -404,6 +410,11 @@ export default function NewEstimatePage() {
     setBottomFaceRuns(pattern.bottomFaceRunsPerSide);
     setEyebrowType(pattern.eyebrowType);
     setShortEyebrowsPerHole(pattern.shortEyebrowsPerHole || 2);
+    // Saved patterns don't carry end-run counts yet (oem_part_patterns
+    // hasn't been extended for this) — reset to 0 rather than leaving
+    // whatever was previously entered on screen.
+    setLeftEndRuns(0);
+    setRightEndRuns(0);
   }
 
   function startNewPattern() {
@@ -415,6 +426,8 @@ export default function NewEstimatePage() {
     setBottomFaceRuns(2);
     setEyebrowType("none");
     setShortEyebrowsPerHole(2);
+    setLeftEndRuns(0);
+    setRightEndRuns(0);
   }
 
   function clearPart() {
@@ -446,6 +459,8 @@ export default function NewEstimatePage() {
     setBottomFaceRuns(0);
     setEyebrowType("none");
     setShortEyebrowsPerHole(2);
+    setLeftEndRuns(0);
+    setRightEndRuns(0);
 
     setPatternOptions([]);
     setIsCreatingNewPattern(false);
@@ -529,7 +544,14 @@ export default function NewEstimatePage() {
     const shortEyebrowAreaMm2 =
       shortEyebrowQuantity * eyebrowLengthMm * runWidthMm;
 
-    const totalAreaCm2 = (fullLengthAreaMm2 + shortEyebrowAreaMm2) / 100;
+    // End runs travel the WIDTH direction (they're on the short end
+    // faces, opposite the bevel edge), not the length — unlike every
+    // other run type here, so their area uses widthMm instead.
+    const endRunQuantity = leftEndRuns + rightEndRuns;
+    const endRunAreaMm2 = endRunQuantity * widthMm * runWidthMm;
+
+    const totalAreaCm2 =
+      (fullLengthAreaMm2 + shortEyebrowAreaMm2 + endRunAreaMm2) / 100;
 
     const totalCarbideCost = totalAreaCm2 * carbideCostRatePerCm2;
 
@@ -545,6 +567,7 @@ export default function NewEstimatePage() {
       fullEyebrowRunQuantity,
       totalFullLengthRuns,
       shortEyebrowQuantity,
+      endRunQuantity,
       totalAreaCm2,
       totalCarbideCost,
       totalSellPrice,
@@ -553,6 +576,7 @@ export default function NewEstimatePage() {
     };
   }, [
     lengthMm,
+    widthMm,
     holeCount,
     holeRows,
     holeOffset,
@@ -562,6 +586,8 @@ export default function NewEstimatePage() {
     bottomFaceRuns,
     eyebrowType,
     shortEyebrowsPerHole,
+    leftEndRuns,
+    rightEndRuns,
     sellRatePerCm2,
     runWidthMm,
     eyebrowLengthMm,
@@ -592,6 +618,8 @@ export default function NewEstimatePage() {
       bottomFaceRunsPerSide: bottomFaceRuns,
       eyebrowType,
       shortEyebrowsPerHole,
+      leftEndRuns,
+      rightEndRuns,
       totalAreaCm2: calculations.totalAreaCm2,
       carbideCostRatePerCm2,
       totalCarbideCost: calculations.totalCarbideCost,
@@ -1170,6 +1198,24 @@ export default function NewEstimatePage() {
                   }}
                 />
 
+                <NumberField
+                  label="Left end runs"
+                  value={leftEndRuns}
+                  onChange={(value) => {
+                    setLeftEndRuns(value);
+                    setOemPartPatternId(null);
+                  }}
+                />
+
+                <NumberField
+                  label="Right end runs"
+                  value={rightEndRuns}
+                  onChange={(value) => {
+                    setRightEndRuns(value);
+                    setOemPartPatternId(null);
+                  }}
+                />
+
                 <label className="block">
                   <span className="mb-1 block text-sm font-medium">
                     Eyebrow type
@@ -1224,7 +1270,7 @@ export default function NewEstimatePage() {
                 )}
               </div>
 
-              <div className="grid gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4 text-sm sm:grid-cols-3">
+              <div className="grid gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4 text-sm sm:grid-cols-4">
                 <SummaryItem
                   label="Full-length runs"
                   value={`${calculations.totalFullLengthRuns}`}
@@ -1237,6 +1283,11 @@ export default function NewEstimatePage() {
                       ? `${calculations.fullEyebrowRunQuantity} full-length`
                       : `${calculations.shortEyebrowQuantity} short`
                   }
+                />
+
+                <SummaryItem
+                  label="End runs"
+                  value={`${calculations.endRunQuantity}`}
                 />
 
                 <SummaryItem
@@ -1454,6 +1505,8 @@ export default function NewEstimatePage() {
                         eyebrowType === "short" ? shortEyebrowsPerHole : 0
                       }
                       runWidthMm={runWidthMm}
+                      leftEndRuns={leftEndRuns}
+                      rightEndRuns={rightEndRuns}
                     />
                   </div>
 
@@ -1501,7 +1554,10 @@ export default function NewEstimatePage() {
           </aside>
         </div>
 
-        {showForm && (
+        {/* 3D Preview — parked for now, needs more work before showing
+            to users again. Flip the condition below back to
+            `showForm` to re-enable once it's ready. */}
+        {false && showForm && (
           <section className="print-hidden mt-5 rounded-lg border border-slate-300 bg-white shadow-sm">
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
               <h3 className="font-semibold">3D Preview</h3>

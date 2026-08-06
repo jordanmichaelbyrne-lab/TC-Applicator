@@ -50,11 +50,20 @@ function computeAreaBreakdown(
       ? fullEyebrowRunQuantity
       : shortEyebrowQuantity;
 
+  // End runs travel the WIDTH direction (short end faces, opposite
+  // the bevel), not the length — same formula used at save time on
+  // the New Estimate page.
+  const endRunQuantity =
+    (estimate.left_end_runs ?? 0) + (estimate.right_end_runs ?? 0);
+  const endRunAreaMm2 = endRunQuantity * estimate.width_mm * runWidthMm;
+
   return {
     totalFullLengthRuns,
     eyebrowQuantity,
     fullLengthAreaCm2: fullLengthAreaMm2 / 100,
     eyebrowAreaCm2: shortEyebrowAreaMm2 / 100,
+    endRunQuantity,
+    endRunAreaCm2: endRunAreaMm2 / 100,
   };
 }
 
@@ -117,8 +126,14 @@ export default async function DrawingDetailPage({
   const effectiveHoleRowSpacingMm = estimate.hole_row_spacing_mm ?? settings.hole_row_spacing_mm;
   const effectiveHoleOffsetMm = estimate.hole_offset_mm ?? settings.hole_offset_mm;
 
-  const { totalFullLengthRuns, eyebrowQuantity, fullLengthAreaCm2, eyebrowAreaCm2 } =
-    computeAreaBreakdown(estimate, effectiveRunWidthMm, effectiveEyebrowLengthMm);
+  const {
+    totalFullLengthRuns,
+    eyebrowQuantity,
+    fullLengthAreaCm2,
+    eyebrowAreaCm2,
+    endRunQuantity,
+    endRunAreaCm2,
+  } = computeAreaBreakdown(estimate, effectiveRunWidthMm, effectiveEyebrowLengthMm);
 
   const costPrice = estimate.total_carbide_cost ?? 0;
   const sellPrice = estimate.total_sell_price ?? 0;
@@ -176,10 +191,14 @@ export default async function DrawingDetailPage({
           eyebrowType={estimate.eyebrow_type}
           eyebrowsPerHole={estimate.short_eyebrows_per_hole}
           runWidthMm={effectiveRunWidthMm}
+          leftEndRuns={estimate.left_end_runs}
+          rightEndRuns={estimate.right_end_runs}
           totalFullLengthRuns={totalFullLengthRuns}
           eyebrowQuantity={eyebrowQuantity}
           fullLengthAreaCm2={fullLengthAreaCm2}
           eyebrowAreaCm2={eyebrowAreaCm2}
+          endRunQuantity={endRunQuantity}
+          endRunAreaCm2={endRunAreaCm2}
           totalAreaCm2={estimate.total_area_cm2 ?? 0}
           costRate={estimate.carbide_cost_rate_per_cm2 ?? 0}
           sellRate={estimate.sell_rate_per_cm2 ?? 0}

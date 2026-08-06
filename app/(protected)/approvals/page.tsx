@@ -149,6 +149,8 @@ export default async function ApprovalsPage({
                   bottomFaceRuns={estimate.bottom_face_runs_per_side}
                   eyebrowType={estimate.eyebrow_type}
                   eyebrowsPerHole={estimate.short_eyebrows_per_hole}
+                  leftEndRuns={estimate.left_end_runs}
+                  rightEndRuns={estimate.right_end_runs}
                   runWidthMm={effectiveRunWidthMm}
                 />
               </div>

@@ -17,6 +17,8 @@ type CoatingLayoutProps = {
   eyebrowType?: "none" | "short" | "full";
   eyebrowsPerHole?: number;
   runWidthMm?: number;
+  leftEndRuns?: number;
+  rightEndRuns?: number;
 };
 
 const COATING_COLOUR = "#f97316";
@@ -47,6 +49,8 @@ export default function CoatingLayout({
   eyebrowType = "none",
   eyebrowsPerHole = 2,
   runWidthMm = 25,
+  leftEndRuns = 0,
+  rightEndRuns = 0,
 }: CoatingLayoutProps) {
   const safeHoleCount = Math.max(holeCount, 0);
   const safeLength = Math.max(lengthMm, 1);
@@ -57,23 +61,28 @@ export default function CoatingLayout({
 
   const frontX = 90;
   const frontY = 95;
-  const frontWidth = 700;
   const endInset = 20;
 
-  // The plan view used to be a fixed 700x190 box regardless of the
-  // part's actual proportions — a long narrow edge and a short wide
-  // one rendered identically, just with different mm labels. Instead,
-  // derive the height from the real width:length ratio (scaled to the
-  // fixed 700px width), clamped so very long/thin or near-square
-  // parts don't blow out or collapse the rest of the drawing's
-  // fixed-position layout below it.
-  const MIN_FRONT_HEIGHT = 90;
-  const MAX_FRONT_HEIGHT = 400;
+  // The plan view used to assume length is always the dominant
+  // (horizontal) dimension — frontWidth was a fixed 700px constant,
+  // only frontHeight scaled. That breaks for parts like end bits
+  // where width can exceed length (e.g. 200mm long × 500mm wide),
+  // which genuinely need to render taller than they are wide.
+  // Instead, both axes derive independently from whichever real
+  // measurement is larger, so either orientation scales correctly.
+  const PLAN_BASE = 650;
+  const MIN_PLAN_DIM = 110;
   const BASE_FRONT_HEIGHT = 190; // the original fixed height every downstream y-position below was designed around
-  const rawFrontHeight = frontWidth * (safeWidth / safeLength);
+  const longestRealMm = Math.max(safeLength, safeWidth);
+  const rawFrontWidth = PLAN_BASE * (safeLength / longestRealMm);
+  const frontWidth = Math.max(
+    MIN_PLAN_DIM,
+    Math.min(PLAN_BASE, rawFrontWidth)
+  );
+  const rawFrontHeight = PLAN_BASE * (safeWidth / longestRealMm);
   const frontHeight = Math.max(
-    MIN_FRONT_HEIGHT,
-    Math.min(MAX_FRONT_HEIGHT, rawFrontHeight)
+    MIN_PLAN_DIM,
+    Math.min(PLAN_BASE, rawFrontHeight)
   );
   // How far the plan-view box grew/shrank vs. the original fixed
   // layout — everything below it (pattern summary, side profile,
@@ -131,7 +140,11 @@ export default function CoatingLayout({
           return layoutCentreY + (index - middleIndex) * rowSpacingPx;
         });
 
-  const eyebrowGap = 20;
+  // Was a fixed 20px regardless of hole size — for taller/narrower
+  // drawings the holes render larger, so a flat gap could barely
+  // clear the hole's own edge (or overlap it entirely). Scale with
+  // the real hole radius instead, so there's always clear separation.
+  const eyebrowGap = holeRadius + 12;
   const upperEyebrowY = Math.min(...rowYs) - eyebrowGap;
   const lowerEyebrowY = Math.max(...rowYs) + eyebrowGap;
 
@@ -370,6 +383,43 @@ export default function CoatingLayout({
           </g>
         ))}
 
+        {/* End runs — coating on the short end faces (opposite the
+            bevel direction), e.g. for loader-bucket corner
+            protection. These only show in the plan view: the side
+            profile is a cross-section constant along the whole
+            length, so it can't represent coating that exists at one
+            specific length-position (the very ends) the way it can
+            for bevel/leading-edge/bottom-face runs. */}
+        {Array.from({ length: leftEndRuns }).map((_, index) => {
+          const x = frontX + 5 + index * 13;
+          return (
+            <line
+              key={`left-end-run-${index}`}
+              x1={x}
+              y1={frontY + endInset}
+              x2={x}
+              y2={frontY + frontHeight - endInset}
+              stroke={COATING_COLOUR}
+              strokeWidth="9"
+            />
+          );
+        })}
+
+        {Array.from({ length: rightEndRuns }).map((_, index) => {
+          const x = frontX + frontWidth - 5 - index * 13;
+          return (
+            <line
+              key={`right-end-run-${index}`}
+              x1={x}
+              y1={frontY + endInset}
+              x2={x}
+              y2={frontY + frontHeight - endInset}
+              stroke={COATING_COLOUR}
+              strokeWidth="9"
+            />
+          );
+        })}
+
         <g>
           <line
             x1={frontX + frontWidth + 35}
@@ -555,6 +605,22 @@ export default function CoatingLayout({
             </g>
           );
         })}
+
+        {/* Left/right end runs wrap around onto the bottom face too —
+            when either is present, the coating actually runs
+            continuously along the whole bottom edge, not just at the
+            very ends. Drawn BEFORE the bottom-face dashes below, so
+            those sit visibly on top of this continuous line. */}
+        {(leftEndRuns > 0 || rightEndRuns > 0) && (
+          <line
+            x1={profileX + 4}
+            y1={profileBottom - 4}
+            x2={profileX + profileWidth - 4}
+            y2={profileBottom - 4}
+            stroke={COATING_COLOUR}
+            strokeWidth="7"
+          />
+        )}
 
         {/* Bottom-face runs actually travel the full LENGTH of the
             edge — the axis going into the page in this cross-section

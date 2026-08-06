@@ -37,11 +37,15 @@ type QuoteSpecSheetProps = {
   eyebrowType: string;
   eyebrowsPerHole: number;
   runWidthMm?: number;
+  leftEndRuns?: number;
+  rightEndRuns?: number;
 
   totalFullLengthRuns: number;
   eyebrowQuantity: number;
   fullLengthAreaCm2: number;
   eyebrowAreaCm2: number;
+  endRunQuantity?: number;
+  endRunAreaCm2?: number;
   totalAreaCm2: number;
 
   costRate: number;
@@ -113,11 +117,15 @@ export default function QuoteSpecSheet({
   eyebrowType,
   eyebrowsPerHole,
   runWidthMm = 25,
+  leftEndRuns = 0,
+  rightEndRuns = 0,
 
   totalFullLengthRuns,
   eyebrowQuantity,
   fullLengthAreaCm2,
   eyebrowAreaCm2,
+  endRunQuantity = 0,
+  endRunAreaCm2 = 0,
   totalAreaCm2,
 
   costRate,
@@ -379,6 +387,8 @@ export default function QuoteSpecSheet({
               eyebrowType={normalisedEyebrowType}
               eyebrowsPerHole={eyebrowsPerHole}
               runWidthMm={runWidthMm}
+              leftEndRuns={leftEndRuns}
+              rightEndRuns={rightEndRuns}
             />
           </div>
 
@@ -398,8 +408,10 @@ export default function QuoteSpecSheet({
               <tr>
                 <th>Full-Length Runs</th>
                 <th>Eyebrow Quantity</th>
+                <th>End Runs</th>
                 <th>Full-Length Area</th>
                 <th>Eyebrow Area</th>
+                <th>End Run Area</th>
                 <th>Total Coated Area</th>
               </tr>
             </thead>
@@ -408,11 +420,15 @@ export default function QuoteSpecSheet({
               <tr>
                 <td>{totalFullLengthRuns}</td>
                 <td>{eyebrowQuantity}</td>
+                <td>{endRunQuantity}</td>
                 <td>
                   {fullLengthAreaCm2.toFixed(0)} cm²
                 </td>
                 <td>
                   {eyebrowAreaCm2.toFixed(0)} cm²
+                </td>
+                <td>
+                  {endRunAreaCm2.toFixed(0)} cm²
                 </td>
                 <td>
                   {totalAreaCm2.toFixed(0)} cm²
