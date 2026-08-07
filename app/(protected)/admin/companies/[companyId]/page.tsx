@@ -79,7 +79,21 @@ export default async function AdminCompanyDetailPage({
             <p className="text-sm text-slate-500">Read-only support view</p>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
+            <Link
+              href={`/admin/companies/${overview.id}/coating-defaults`}
+              className="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50"
+            >
+              Coating Defaults
+            </Link>
+
+            <Link
+              href={`/admin/companies/${overview.id}/cost-analysis`}
+              className="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50"
+            >
+              Cost Analysis
+            </Link>
+
             <Link
               href={`/admin/companies/${overview.id}/reports`}
               className="rounded border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50"

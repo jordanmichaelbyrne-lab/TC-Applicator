@@ -160,3 +160,33 @@ export async function listCostAnalysisSnapshots() {
 
   return (data ?? []) as CostAnalysisSnapshot[];
 }
+
+/**
+ * TC Support viewing one specific company's Cost Analysis history —
+ * a dedicated read-only path, not a "switch company" session. Takes
+ * an explicit companyId rather than the caller's own (which is what
+ * listCostAnalysisSnapshots() above does), since a platform admin's
+ * own profile may belong to an unrelated company.
+ */
+export async function listCostAnalysisSnapshotsForPlatformAdmin(
+  companyId: string
+) {
+  const { supabase, isPlatformAdmin } = await getCurrentUserAndCompany();
+
+  if (!isPlatformAdmin) {
+    throw new Error("Only TC Applicator Support can view this.");
+  }
+
+  const { data, error } = await supabase
+    .from("cost_analysis_snapshots")
+    .select("*")
+    .eq("company_id", companyId)
+    .order("created_at", { ascending: false })
+    .limit(24);
+
+  if (error) {
+    throw new Error(`Unable to load cost analysis history: ${error.message}`);
+  }
+
+  return (data ?? []) as CostAnalysisSnapshot[];
+}

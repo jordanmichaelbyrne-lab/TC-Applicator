@@ -9,6 +9,7 @@ import {
   approveEstimate,
   rejectEstimate,
   getEstimate,
+  setQuoteOutcome,
   linkEstimateToOemPartAndPattern,
   type CreateEstimateInput,
 } from "@/app/lib/repositories/estimates";
@@ -187,6 +188,31 @@ export async function getEstimateAction(
     return {
       success: false,
       message: toErrorMessage(error, "Unable to load estimate."),
+    };
+  }
+}
+
+// ---- Quote outcome (converted / lost / pending), for the Approved
+// Drawings list — a client-driven inline control, so it needs a JSON
+// result rather than a redirect ----
+
+type SetQuoteOutcomeActionResult =
+  | { success: true; estimate: Awaited<ReturnType<typeof setQuoteOutcome>> }
+  | { success: false; message: string };
+
+export async function setQuoteOutcomeAction(
+  estimateId: string,
+  outcome: "pending" | "converted" | "lost",
+  lostReason?: string
+): Promise<SetQuoteOutcomeActionResult> {
+  try {
+    const estimate = await setQuoteOutcome(estimateId, outcome, lostReason);
+    revalidatePath("/drawings");
+    return { success: true, estimate };
+  } catch (error) {
+    return {
+      success: false,
+      message: toErrorMessage(error, "Unable to update quote outcome."),
     };
   }
 }

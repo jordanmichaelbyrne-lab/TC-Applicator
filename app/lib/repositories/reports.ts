@@ -17,6 +17,7 @@ export type ReportEstimateRow = {
   true_cost: number | null;
   carbide_weight_g: number | null;
   margin: number | null;
+  quote_outcome: "pending" | "converted" | "lost";
 };
 
 export type ReportFilterOptions = {
@@ -43,7 +44,7 @@ async function buildReport(
   const { data: estimates, error: estimatesError } = await supabase
     .from("estimates")
     .select(
-      "id, approved_at, oem_part_number, manufacturer, edge_profile, customer_name, created_by, total_area_cm2, total_sell_price"
+      "id, approved_at, oem_part_number, manufacturer, edge_profile, customer_name, created_by, total_area_cm2, total_sell_price, quote_outcome"
     )
     .eq("company_id", companyId)
     .eq("status", "approved")
@@ -129,6 +130,7 @@ async function buildReport(
       true_cost: trueCost,
       carbide_weight_g: carbideWeightG,
       margin: trueCost !== null ? (est.total_sell_price ?? 0) - trueCost : null,
+      quote_outcome: est.quote_outcome,
     };
   });
 

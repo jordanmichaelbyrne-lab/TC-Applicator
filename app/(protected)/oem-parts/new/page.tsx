@@ -54,6 +54,8 @@ export default function NewOemPartPage() {
   const [leadingEdgeRunsPerSide, setLeadingEdgeRunsPerSide] = useState(1);
   const [bottomFaceRunsPerSide, setBottomFaceRunsPerSide] = useState(2);
   const [eyebrowsPerHole, setEyebrowsPerHole] = useState(0);
+  const [leftEndRuns, setLeftEndRuns] = useState(0);
+  const [rightEndRuns, setRightEndRuns] = useState(0);
 
   const [engineeringStatus, setEngineeringStatus] =
     useState<EngineeringStatus>("Pending Verification");
@@ -82,6 +84,8 @@ export default function NewOemPartPage() {
     leadingEdgeRunsPerSide,
     bottomFaceRunsPerSide,
     eyebrowsPerHole,
+    leftEndRuns,
+    rightEndRuns,
   };
 
   function validate() {
@@ -294,11 +298,13 @@ export default function NewOemPartPage() {
             </Section>
 
             <Section title="Standard Coating Pattern">
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 <NumberField label="Bevel Runs per Side" value={bevelRunsPerSide} onChange={setBevelRunsPerSide} />
                 <NumberField label="Leading Edge Runs per Side" value={leadingEdgeRunsPerSide} onChange={setLeadingEdgeRunsPerSide} />
                 <NumberField label="Bottom Face Runs per Side" value={bottomFaceRunsPerSide} onChange={setBottomFaceRunsPerSide} />
                 <NumberField label="Eyebrows per Hole" value={eyebrowsPerHole} onChange={setEyebrowsPerHole} />
+                <NumberField label="Left End Runs" value={leftEndRuns} onChange={setLeftEndRuns} />
+                <NumberField label="Right End Runs" value={rightEndRuns} onChange={setRightEndRuns} />
               </div>
             </Section>
 

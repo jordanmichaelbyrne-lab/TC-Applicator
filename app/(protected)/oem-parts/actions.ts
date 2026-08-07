@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
+  getOemParts,
   getOemPart,
   createOemPart,
   updateOemPart,
@@ -52,6 +53,27 @@ export async function getOemPartAction(
     return {
       success: false,
       message: toErrorMessage(error, "Unable to load OEM part."),
+    };
+  }
+}
+
+// ---- New: for the live-filtering search dropdown on the OEM Parts
+// list page, which needs the full catalog client-side to filter
+// instantly as the user types, rather than a full-page reload per
+// keystroke ----
+
+type GetPartsActionResult =
+  | { success: true; parts: Awaited<ReturnType<typeof getOemParts>> }
+  | { success: false; message: string };
+
+export async function getOemPartsAction(): Promise<GetPartsActionResult> {
+  try {
+    const parts = await getOemParts();
+    return { success: true, parts };
+  } catch (error) {
+    return {
+      success: false,
+      message: toErrorMessage(error, "Unable to load OEM parts."),
     };
   }
 }

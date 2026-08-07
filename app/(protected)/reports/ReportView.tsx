@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReportData, ReportEstimateRow } from "@/app/lib/repositories/reports";
 
-type GroupBy = "none" | "customer" | "manufacturer" | "part" | "user" | "month";
+type GroupBy = "none" | "customer" | "manufacturer" | "part" | "user" | "month" | "outcome";
+type OutcomeFilter = "" | "pending" | "converted" | "lost";
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("en-AU", {
@@ -39,6 +40,7 @@ function toCsv(rows: ReportEstimateRow[]) {
     "Edge Profile",
     "Customer",
     "Created By",
+    "Outcome",
     "Area (cm²)",
     "Carbide Weight",
     "Sell Price",
@@ -54,6 +56,7 @@ function toCsv(rows: ReportEstimateRow[]) {
       row.edge_profile,
       row.customer_name ?? "",
       row.created_by_name ?? "",
+      row.quote_outcome,
       row.total_area_cm2.toFixed(0),
       row.carbide_weight_g !== null ? row.carbide_weight_g.toFixed(1) : "",
       row.total_sell_price.toFixed(2),
@@ -88,6 +91,7 @@ export default function ReportView({ fetchData }: ReportViewProps) {
   const [userId, setUserId] = useState("");
   const [manufacturer, setManufacturer] = useState("");
   const [edgeProfile, setEdgeProfile] = useState("");
+  const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>("");
   const [groupBy, setGroupBy] = useState<GroupBy>("none");
 
   useEffect(() => {
@@ -107,7 +111,10 @@ export default function ReportView({ fetchData }: ReportViewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const filteredRows = useMemo(() => {
+  // Everything EXCEPT the outcome dropdown — this is the base set the
+  // Quoted vs. Sold comparison is built from, so narrowing by outcome
+  // never collapses that comparison down to a single column.
+  const baseFilteredRows = useMemo(() => {
     return rows.filter((row) => {
       if (startDate && row.approved_at < startDate) return false;
       if (endDate && row.approved_at > `${endDate}T23:59:59`) return false;
@@ -118,14 +125,22 @@ export default function ReportView({ fetchData }: ReportViewProps) {
     });
   }, [rows, startDate, endDate, userId, manufacturer, edgeProfile]);
 
-  const summary = useMemo(() => {
+  // Adds the outcome filter on top — this is what actually drives the
+  // detail table, grouping, and CSV export below, so you can still
+  // drill into just pending/converted/lost rows when you want to.
+  const detailRows = useMemo(() => {
+    if (!outcomeFilter) return baseFilteredRows;
+    return baseFilteredRows.filter((row) => row.quote_outcome === outcomeFilter);
+  }, [baseFilteredRows, outcomeFilter]);
+
+  function computeSummary(sourceRows: ReportEstimateRow[]) {
     let revenue = 0;
     let trueCost = 0;
     let costKnownCount = 0;
     let weightG = 0;
     let areaCm2 = 0;
 
-    for (const row of filteredRows) {
+    for (const row of sourceRows) {
       revenue += row.total_sell_price;
       areaCm2 += row.total_area_cm2;
       if (row.true_cost !== null) {
@@ -141,7 +156,7 @@ export default function ReportView({ fetchData }: ReportViewProps) {
     const marginPct = revenue > 0 && margin !== null ? (margin / revenue) * 100 : null;
 
     return {
-      jobCount: filteredRows.length,
+      jobCount: sourceRows.length,
       costKnownCount,
       revenue,
       trueCost,
@@ -150,7 +165,38 @@ export default function ReportView({ fetchData }: ReportViewProps) {
       weightG,
       areaCm2,
     };
-  }, [filteredRows]);
+  }
+
+  // "Quoted" = every approved job matching the other filters,
+  // regardless of outcome. "Sold" = the same set narrowed to
+  // converted only — always shown together so you can compare them,
+  // independent of whatever the outcome dropdown is currently set to.
+  const quotedSummary = useMemo(
+    () => computeSummary(baseFilteredRows),
+    [baseFilteredRows]
+  );
+  const soldRows = useMemo(
+    () => baseFilteredRows.filter((row) => row.quote_outcome === "converted"),
+    [baseFilteredRows]
+  );
+  const soldSummary = useMemo(() => computeSummary(soldRows), [soldRows]);
+
+  const outcomeCounts = useMemo(() => {
+    let convertedCount = 0;
+    let lostCount = 0;
+    let pendingCount = 0;
+
+    for (const row of baseFilteredRows) {
+      if (row.quote_outcome === "converted") convertedCount += 1;
+      else if (row.quote_outcome === "lost") lostCount += 1;
+      else pendingCount += 1;
+    }
+
+    const resolvedCount = convertedCount + lostCount;
+    const winRatePct = resolvedCount > 0 ? (convertedCount / resolvedCount) * 100 : null;
+
+    return { convertedCount, lostCount, pendingCount, winRatePct };
+  }, [baseFilteredRows]);
 
   const groupedRows = useMemo(() => {
     if (groupBy === "none") return null;
@@ -160,7 +206,7 @@ export default function ReportView({ fetchData }: ReportViewProps) {
       { label: string; revenue: number; trueCost: number; margin: number; count: number; weightG: number }
     >();
 
-    for (const row of filteredRows) {
+    for (const row of detailRows) {
       let key: string;
       let label: string;
 
@@ -184,6 +230,10 @@ export default function ReportView({ fetchData }: ReportViewProps) {
         case "month":
           key = monthKey(row.approved_at);
           label = key;
+          break;
+        case "outcome":
+          key = row.quote_outcome;
+          label = row.quote_outcome.charAt(0).toUpperCase() + row.quote_outcome.slice(1);
           break;
         default:
           key = "—";
@@ -213,10 +263,10 @@ export default function ReportView({ fetchData }: ReportViewProps) {
     }
 
     return Array.from(groups.values()).sort((a, b) => b.revenue - a.revenue);
-  }, [filteredRows, groupBy]);
+  }, [detailRows, groupBy]);
 
   function handleExportCsv() {
-    const csv = toCsv(filteredRows);
+    const csv = toCsv(detailRows);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -237,7 +287,7 @@ export default function ReportView({ fetchData }: ReportViewProps) {
   return (
     <div className="space-y-6">
       <section className="print-hidden rounded-lg border border-slate-300 bg-white p-5 shadow-sm">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-7">
           <label className="block">
             <span className="mb-1 block text-sm font-medium">From</span>
             <input
@@ -307,6 +357,20 @@ export default function ReportView({ fetchData }: ReportViewProps) {
           </label>
 
           <label className="block">
+            <span className="mb-1 block text-sm font-medium">Outcome</span>
+            <select
+              value={outcomeFilter}
+              onChange={(e) => setOutcomeFilter(e.target.value as OutcomeFilter)}
+              className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value="">All</option>
+              <option value="pending">Pending</option>
+              <option value="converted">Converted</option>
+              <option value="lost">Lost</option>
+            </select>
+          </label>
+
+          <label className="block">
             <span className="mb-1 block text-sm font-medium">Group by</span>
             <select
               value={groupBy}
@@ -319,6 +383,7 @@ export default function ReportView({ fetchData }: ReportViewProps) {
               <option value="part">OEM Part</option>
               <option value="user">User</option>
               <option value="month">Month</option>
+              <option value="outcome">Outcome</option>
             </select>
           </label>
         </div>
@@ -341,24 +406,75 @@ export default function ReportView({ fetchData }: ReportViewProps) {
         </div>
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-3 lg:grid-cols-6">
-        <SummaryCard label="Jobs" value={String(summary.jobCount)} />
-        <SummaryCard label="Total Area" value={`${summary.areaCm2.toFixed(0)} cm²`} />
-        <SummaryCard label="Carbide Weight" value={formatWeight(summary.weightG)} />
-        <SummaryCard label="Revenue" value={formatCurrency(summary.revenue)} />
+      <section className="mb-4">
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Quoted — every approved job matching the filters above
+        </h3>
+        <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-6">
+          <SummaryCard label="Jobs" value={String(quotedSummary.jobCount)} />
+          <SummaryCard label="Total Area" value={`${quotedSummary.areaCm2.toFixed(0)} cm²`} />
+          <SummaryCard label="Carbide Weight" value={formatWeight(quotedSummary.weightG)} />
+          <SummaryCard label="Revenue" value={formatCurrency(quotedSummary.revenue)} />
+          <SummaryCard
+            label="True Cost"
+            value={formatCurrency(quotedSummary.trueCost)}
+            helper={
+              quotedSummary.costKnownCount < quotedSummary.jobCount
+                ? `${quotedSummary.jobCount - quotedSummary.costKnownCount} job(s) missing cost data`
+                : undefined
+            }
+          />
+          <SummaryCard
+            label="Margin"
+            value={quotedSummary.margin !== null ? formatCurrency(quotedSummary.margin) : "—"}
+            helper={quotedSummary.marginPct !== null ? `${quotedSummary.marginPct.toFixed(1)}%` : undefined}
+            emphasised
+          />
+        </div>
+      </section>
+
+      <section className="mb-4">
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Sold — converted only
+        </h3>
+        <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-6">
+          <SummaryCard label="Jobs" value={String(soldSummary.jobCount)} />
+          <SummaryCard label="Total Area" value={`${soldSummary.areaCm2.toFixed(0)} cm²`} />
+          <SummaryCard label="Carbide Weight" value={formatWeight(soldSummary.weightG)} />
+          <SummaryCard label="Revenue" value={formatCurrency(soldSummary.revenue)} />
+          <SummaryCard
+            label="True Cost"
+            value={formatCurrency(soldSummary.trueCost)}
+            helper={
+              soldSummary.costKnownCount < soldSummary.jobCount
+                ? `${soldSummary.jobCount - soldSummary.costKnownCount} job(s) missing cost data`
+                : undefined
+            }
+          />
+          <SummaryCard
+            label="Margin"
+            value={soldSummary.margin !== null ? formatCurrency(soldSummary.margin) : "—"}
+            helper={soldSummary.marginPct !== null ? `${soldSummary.marginPct.toFixed(1)}%` : undefined}
+            emphasised
+          />
+        </div>
+      </section>
+
+      <section className="mb-5 grid gap-4 sm:grid-cols-3">
         <SummaryCard
-          label="True Cost"
-          value={formatCurrency(summary.trueCost)}
-          helper={
-            summary.costKnownCount < summary.jobCount
-              ? `${summary.jobCount - summary.costKnownCount} job(s) missing cost data`
-              : undefined
-          }
+          label="Win Rate"
+          value={outcomeCounts.winRatePct !== null ? `${outcomeCounts.winRatePct.toFixed(0)}%` : "—"}
+          helper={`${outcomeCounts.convertedCount} won · ${outcomeCounts.lostCount} lost · ${outcomeCounts.pendingCount} pending`}
+          emphasised
         />
         <SummaryCard
-          label="Margin"
-          value={summary.margin !== null ? formatCurrency(summary.margin) : "—"}
-          helper={summary.marginPct !== null ? `${summary.marginPct.toFixed(1)}%` : undefined}
+          label="Quoted vs Sold Revenue"
+          value={
+            quotedSummary.revenue > 0
+              ? `${((soldSummary.revenue / quotedSummary.revenue) * 100).toFixed(0)}% captured`
+              : "—"
+          }
+          helper={`${formatCurrency(soldSummary.revenue)} of ${formatCurrency(quotedSummary.revenue)}`}
           emphasised
         />
       </section>
@@ -406,6 +522,7 @@ export default function ReportView({ fetchData }: ReportViewProps) {
                   <Th>Profile</Th>
                   <Th>Customer</Th>
                   <Th>User</Th>
+                  <Th>Outcome</Th>
                   <Th>Weight</Th>
                   <Th>Revenue</Th>
                   <Th>True Cost</Th>
@@ -413,7 +530,7 @@ export default function ReportView({ fetchData }: ReportViewProps) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
-                {filteredRows.map((row) => (
+                {detailRows.map((row) => (
                   <tr key={row.id}>
                     <td className="whitespace-nowrap px-4 py-2 text-slate-600">
                       {formatDate(row.approved_at)}
@@ -423,6 +540,9 @@ export default function ReportView({ fetchData }: ReportViewProps) {
                     <td className="px-4 py-2">{row.edge_profile}</td>
                     <td className="px-4 py-2">{row.customer_name || "—"}</td>
                     <td className="px-4 py-2">{row.created_by_name || "—"}</td>
+                    <td className="whitespace-nowrap px-4 py-2">
+                      <OutcomeBadge outcome={row.quote_outcome} />
+                    </td>
                     <td className="whitespace-nowrap px-4 py-2">
                       {row.carbide_weight_g !== null
                         ? formatWeight(row.carbide_weight_g)
@@ -440,9 +560,9 @@ export default function ReportView({ fetchData }: ReportViewProps) {
                   </tr>
                 ))}
 
-                {filteredRows.length === 0 && (
+                {detailRows.length === 0 && (
                   <tr>
-                    <td colSpan={10} className="px-4 py-8 text-center text-slate-500">
+                    <td colSpan={11} className="px-4 py-8 text-center text-slate-500">
                       No approved jobs match these filters.
                     </td>
                   </tr>
@@ -461,6 +581,23 @@ export default function ReportView({ fetchData }: ReportViewProps) {
         }
       `}</style>
     </div>
+  );
+}
+
+function OutcomeBadge({ outcome }: { outcome: "pending" | "converted" | "lost" }) {
+  const classes =
+    outcome === "converted"
+      ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+      : outcome === "lost"
+        ? "border-red-300 bg-red-50 text-red-800"
+        : "border-slate-300 bg-slate-100 text-slate-700";
+
+  const label = outcome.charAt(0).toUpperCase() + outcome.slice(1);
+
+  return (
+    <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${classes}`}>
+      {label}
+    </span>
   );
 }
 

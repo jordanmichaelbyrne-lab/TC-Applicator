@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createClient } from "@/app/lib/supabase/server";
+import { createAdminClient } from "@/app/lib/supabase/admin";
 import { getCurrentUserAndCompany } from "@/app/lib/repositories/tenant";
 
 export type EstimateStatus = "draft" | "pending_approval" | "approved" | "rejected";
@@ -34,6 +35,9 @@ export type EstimateRow = {
   short_eyebrows_per_hole: number;
   left_end_runs: number;
   right_end_runs: number;
+  quote_outcome: "pending" | "converted" | "lost";
+  quote_outcome_at: string | null;
+  quote_lost_reason: string | null;
   total_area_cm2: number | null;
   carbide_cost_rate_per_cm2: number | null;
   total_carbide_cost: number | null;
@@ -221,7 +225,12 @@ export async function listPendingApprovals() {
   return (data ?? []) as EstimateRow[];
 }
 
-export async function listApprovedEstimates() {
+export type ApprovedEstimateUser = { id: string; name: string };
+
+export async function listApprovedEstimates(): Promise<{
+  estimates: EstimateRow[];
+  users: ApprovedEstimateUser[];
+}> {
   const { supabase, companyId } = await getCurrentUserAndCompany();
 
   const { data, error } = await supabase
@@ -232,7 +241,33 @@ export async function listApprovedEstimates() {
     .order("approved_at", { ascending: false });
 
   if (error) throw new Error(`Unable to load approved drawings: ${error.message}`);
-  return (data ?? []) as EstimateRow[];
+  const estimates = (data ?? []) as EstimateRow[];
+
+  const { data: profiles, error: profilesError } = await supabase
+    .from("profiles")
+    .select("id, full_name")
+    .eq("company_id", companyId);
+
+  if (profilesError) {
+    throw new Error(`Unable to load team names: ${profilesError.message}`);
+  }
+
+  const nameById = new Map(
+    (profiles ?? []).map((p) => [p.id as string, (p.full_name as string | null) || "Unknown"])
+  );
+
+  // Only include users who've actually created at least one approved
+  // job — no point offering an empty filter option for someone who's
+  // never submitted anything.
+  const userIds = new Set(
+    estimates.map((e) => e.created_by).filter((id): id is string => Boolean(id))
+  );
+  const users = Array.from(userIds).map((id) => ({
+    id,
+    name: nameById.get(id) || "Unknown",
+  }));
+
+  return { estimates, users };
 }
 
 export async function getEstimate(estimateId: string) {
@@ -360,5 +395,48 @@ export async function attachEstimatePhoto(estimateId: string, photoPath: string)
     .single();
 
   if (error) throw new Error(`Unable to attach photo: ${error.message}`);
+  return data as EstimateRow;
+}
+
+/**
+ * Sets an approved job's outcome — for company reporting (quote vs.
+ * sale conversion rate), not tied to the estimate's own approval
+ * status. quote_outcome_at records when the outcome was set, so
+ * reports can also measure how long a job sat pending before
+ * converting or being lost. lostReason only makes sense (and is
+ * only stored) when outcome is "lost" — resetting to "pending" or
+ * "converted" clears any previous reason.
+ *
+ * Uses the service-role client for the write itself: the RLS UPDATE
+ * policy on estimates likely locks approved rows from further edits
+ * (protecting historical/approved data), which is correct for the
+ * estimate's own fields but blocks this specific field group that's
+ * meant to stay editable after approval. The user's own session is
+ * still used to resolve companyId and record who made the change, and
+ * that companyId is enforced explicitly in the query below — real
+ * company isolation, not RLS, is what actually scopes this write.
+ */
+export async function setQuoteOutcome(
+  estimateId: string,
+  outcome: "pending" | "converted" | "lost",
+  lostReason?: string
+) {
+  const { user, companyId } = await getCurrentUserAndCompany();
+  const supabase = createAdminClient();
+
+  const { data, error } = await supabase
+    .from("estimates")
+    .update({
+      quote_outcome: outcome,
+      quote_outcome_at: outcome === "pending" ? null : new Date().toISOString(),
+      quote_lost_reason: outcome === "lost" ? lostReason?.trim() || null : null,
+      updated_by: user.id,
+    })
+    .eq("id", estimateId)
+    .eq("company_id", companyId)
+    .select("*")
+    .single();
+
+  if (error) throw new Error(`Unable to update quote outcome: ${error.message}`);
   return data as EstimateRow;
 }

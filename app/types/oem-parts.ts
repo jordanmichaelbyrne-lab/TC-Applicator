@@ -8,6 +8,10 @@ export type StandardCoatingPattern = {
   leadingEdgeRunsPerSide: number;
   bottomFaceRunsPerSide: number;
   eyebrowsPerHole: number;
+  // Optional, not present on parts saved before this field existed —
+  // callers should fall back to 0 when reading an older saved part.
+  leftEndRuns?: number;
+  rightEndRuns?: number;
 };
 
 export type OemPartRow = {

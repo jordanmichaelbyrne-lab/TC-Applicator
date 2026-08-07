@@ -518,7 +518,7 @@ export default function OemPartDetailPage() {
 
           <div className="lg:col-span-2">
             <Section title="Standard Coating Pattern">
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <EditableNumberField
                   label="Bevel Runs per Side"
                   value={formPart.standardPattern.bevelRunsPerSide}
@@ -542,6 +542,18 @@ export default function OemPartDetailPage() {
                   value={formPart.standardPattern.eyebrowsPerHole}
                   disabled={!isEditing}
                   onChange={(v) => updatePattern("eyebrowsPerHole", v)}
+                />
+                <EditableNumberField
+                  label="Left End Runs"
+                  value={formPart.standardPattern.leftEndRuns ?? 0}
+                  disabled={!isEditing}
+                  onChange={(v) => updatePattern("leftEndRuns", v)}
+                />
+                <EditableNumberField
+                  label="Right End Runs"
+                  value={formPart.standardPattern.rightEndRuns ?? 0}
+                  disabled={!isEditing}
+                  onChange={(v) => updatePattern("rightEndRuns", v)}
                 />
               </div>
             </Section>
