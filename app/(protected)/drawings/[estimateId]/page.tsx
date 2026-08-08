@@ -5,6 +5,7 @@ import {
   getSignedPhotoUrl,
   type EstimateRow,
 } from "@/app/lib/repositories/estimates";
+import { getOemPart } from "@/app/lib/repositories/oemParts";
 import { getCurrentUserAndCompany } from "@/app/lib/repositories/tenant";
 import { getSignedCompanyLogoUrl } from "@/app/lib/repositories/platformOverview";
 import { getCompanySettings } from "@/app/lib/settings/companySettings";
@@ -67,6 +68,18 @@ function computeAreaBreakdown(
   };
 }
 
+// Mirrors the same partCategory-prefix derivation used on the New
+// Estimate page, so Machine Type can also benefit from a later OEM
+// Parts catalog correction, not just Manufacturer/Edge Type.
+function deriveMachineTypeFromCategory(category: string) {
+  if (category.startsWith("Loader")) return "Loader";
+  if (category.startsWith("Dozer")) return "Dozer";
+  if (category.startsWith("Scraper")) return "Scraper";
+  if (category.startsWith("Grader")) return "Grader";
+  if (category.startsWith("Excavator")) return "Excavator";
+  return "";
+}
+
 function toQuoteNumber(estimateId: string) {
   return `TC-${estimateId.slice(0, 8).toUpperCase()}`;
 }
@@ -126,6 +139,35 @@ export default async function DrawingDetailPage({
   const effectiveHoleRowSpacingMm = estimate.hole_row_spacing_mm ?? settings.hole_row_spacing_mm;
   const effectiveHoleOffsetMm = estimate.hole_offset_mm ?? settings.hole_offset_mm;
 
+  // Manufacturer / Edge Type / Machine info are part IDENTITY, not
+  // coating-calculation data — unlike run width etc. above, they
+  // should NOT stay locked to whatever was on the estimate at
+  // approval time. If this estimate is linked to a catalog part,
+  // prefer that part's CURRENT data (e.g. after someone later fills
+  // in the real Manufacturer on the OEM Parts page), only falling
+  // back to the estimate's own stored value when there's no linked
+  // part at all or the catalog field itself is empty.
+  const linkedOemPart = estimate.oem_part_id
+    ? await getOemPart(estimate.oem_part_id)
+    : null;
+
+  const effectiveManufacturer =
+    linkedOemPart?.manufacturer || estimate.manufacturer || "";
+  const effectiveEdgeType =
+    linkedOemPart?.partCategory || estimate.edge_type || "";
+  const effectiveMachineModel =
+    (linkedOemPart?.compatibleMachines?.length
+      ? linkedOemPart.compatibleMachines.join(", ")
+      : null) ||
+    estimate.machine_model ||
+    undefined;
+  const effectiveMachineType =
+    (linkedOemPart?.partCategory
+      ? deriveMachineTypeFromCategory(linkedOemPart.partCategory)
+      : null) ||
+    estimate.machine_type ||
+    "";
+
   const {
     totalFullLengthRuns,
     eyebrowQuantity,
@@ -171,10 +213,10 @@ export default async function DrawingDetailPage({
           customer={estimate.customer_name ?? ""}
           jobReference={estimate.job_reference ?? undefined}
           oemPartNumber={estimate.oem_part_number}
-          manufacturer={estimate.manufacturer ?? ""}
-          machineType={estimate.machine_type ?? ""}
-          machineModel={estimate.machine_model ?? undefined}
-          edgeType={estimate.edge_type ?? ""}
+          manufacturer={effectiveManufacturer}
+          machineType={effectiveMachineType}
+          machineModel={effectiveMachineModel}
+          edgeType={effectiveEdgeType}
           profileFamily={estimate.edge_profile}
           lengthMm={estimate.length_mm}
           widthMm={estimate.width_mm}
@@ -199,6 +241,7 @@ export default async function DrawingDetailPage({
           eyebrowAreaCm2={eyebrowAreaCm2}
           endRunQuantity={endRunQuantity}
           endRunAreaCm2={endRunAreaCm2}
+          carbideWeightG={estimate.carbide_weight_g}
           totalAreaCm2={estimate.total_area_cm2 ?? 0}
           costRate={estimate.carbide_cost_rate_per_cm2 ?? 0}
           sellRate={estimate.sell_rate_per_cm2 ?? 0}

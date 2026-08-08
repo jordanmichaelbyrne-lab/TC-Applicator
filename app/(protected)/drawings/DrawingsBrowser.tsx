@@ -22,6 +22,12 @@ function formatDate(value: string | null) {
   }).format(new Date(value));
 }
 
+function formatWeight(grams: number) {
+  return grams >= 1000
+    ? `${(grams / 1000).toFixed(2)} kg`
+    : `${grams.toFixed(0)} g`;
+}
+
 type DrawingsBrowserProps = {
   estimates: EstimateRow[];
   users: ApprovedEstimateUser[];
@@ -143,7 +149,14 @@ export default function DrawingsBrowser({
                   </td>
 
                   <td className="whitespace-nowrap px-5 py-4 text-sm">
-                    {estimate.length_mm} × {estimate.width_mm} × {estimate.thickness_mm} mm
+                    <div>
+                      {estimate.length_mm} × {estimate.width_mm} × {estimate.thickness_mm} mm
+                    </div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      {estimate.carbide_weight_g !== null
+                        ? formatWeight(estimate.carbide_weight_g)
+                        : "—"}
+                    </div>
                   </td>
 
                   <td className="whitespace-nowrap px-5 py-4 text-sm font-medium">

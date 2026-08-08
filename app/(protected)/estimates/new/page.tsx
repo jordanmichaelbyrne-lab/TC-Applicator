@@ -12,6 +12,7 @@ import {
   getOemPartPatternsAction,
   getEstimateAction,
   getCompanySettingsAction,
+  getCarbideGramsPerCm2Action,
   getPrintMetaAction,
 } from "@/app/(protected)/estimates/actions";
 import type { CreateEstimateInput, EstimateStatus } from "@/app/lib/repositories/estimates";
@@ -64,6 +65,12 @@ function formatCurrency(value: number) {
     style: "currency",
     currency: "AUD",
   }).format(value);
+}
+
+function formatWeight(grams: number) {
+  return grams >= 1000
+    ? `${(grams / 1000).toFixed(2)} kg`
+    : `${grams.toFixed(0)} g`;
 }
 
 function formatPrintDate(date: Date) {
@@ -144,6 +151,7 @@ export default function NewEstimatePage() {
   const [carbideCostRatePerCm2, setCarbideCostRatePerCm2] = useState(0.45);
   const [holeRowSpacingMm, setHoleRowSpacingMm] = useState(50);
   const [holeOffsetMm, setHoleOffsetMm] = useState(75);
+  const [carbideGramsPerCm2, setCarbideGramsPerCm2] = useState<number | null>(null);
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
 
   const [printPreparedBy, setPrintPreparedBy] = useState<string | null>(null);
@@ -178,11 +186,13 @@ export default function NewEstimatePage() {
     let cancelled = false;
 
     (async () => {
-      const [partsResult, settingsResult, printMetaResult] = await Promise.all([
-        getOemPartsAction(),
-        getCompanySettingsAction(),
-        getPrintMetaAction(),
-      ]);
+      const [partsResult, settingsResult, printMetaResult, carbideRatioResult] =
+        await Promise.all([
+          getOemPartsAction(),
+          getCompanySettingsAction(),
+          getPrintMetaAction(),
+          getCarbideGramsPerCm2Action(),
+        ]);
 
       if (cancelled) {
         return;
@@ -200,6 +210,13 @@ export default function NewEstimatePage() {
         setCarbideCostRatePerCm2(settingsResult.settings.carbide_cost_rate_per_cm2);
         setHoleRowSpacingMm(settingsResult.settings.hole_row_spacing_mm);
         setHoleOffsetMm(settingsResult.settings.hole_offset_mm);
+      }
+
+      // Silently leave carbideGramsPerCm2 as null on failure/no-data
+      // (e.g. no Cost Analysis snapshot saved yet) — the weight
+      // display just shows "—" rather than erroring the whole page.
+      if (carbideRatioResult.success) {
+        setCarbideGramsPerCm2(carbideRatioResult.gramsPerCm2);
       }
 
       if (printMetaResult.success) {
@@ -560,6 +577,11 @@ export default function NewEstimatePage() {
     const grossMargin =
       totalSellPrice > 0 ? (grossProfit / totalSellPrice) * 100 : 0;
 
+    // null when no Cost Analysis snapshot has been saved yet — the
+    // weight display shows "—" in that case rather than a false 0.
+    const carbideWeightG =
+      carbideGramsPerCm2 !== null ? totalAreaCm2 * carbideGramsPerCm2 : null;
+
     return {
       bevelRunQuantity,
       leadingEdgeRunQuantity,
@@ -573,6 +595,7 @@ export default function NewEstimatePage() {
       totalSellPrice,
       grossProfit,
       grossMargin,
+      carbideWeightG,
     };
   }, [
     lengthMm,
@@ -592,6 +615,7 @@ export default function NewEstimatePage() {
     runWidthMm,
     eyebrowLengthMm,
     carbideCostRatePerCm2,
+    carbideGramsPerCm2,
   ]);
 
   function buildEstimateInput(): CreateEstimateInput {
@@ -620,6 +644,7 @@ export default function NewEstimatePage() {
       shortEyebrowsPerHole,
       leftEndRuns,
       rightEndRuns,
+      carbideWeightG: calculations.carbideWeightG,
       totalAreaCm2: calculations.totalAreaCm2,
       carbideCostRatePerCm2,
       totalCarbideCost: calculations.totalCarbideCost,
@@ -1270,7 +1295,7 @@ export default function NewEstimatePage() {
                 )}
               </div>
 
-              <div className="grid gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4 text-sm sm:grid-cols-4">
+              <div className="grid gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4 text-sm sm:grid-cols-5">
                 <SummaryItem
                   label="Full-length runs"
                   value={`${calculations.totalFullLengthRuns}`}
@@ -1293,6 +1318,15 @@ export default function NewEstimatePage() {
                 <SummaryItem
                   label="Coated area"
                   value={`${calculations.totalAreaCm2.toFixed(0)} cm²`}
+                />
+
+                <SummaryItem
+                  label="Carbide weight"
+                  value={
+                    calculations.carbideWeightG !== null
+                      ? formatWeight(calculations.carbideWeightG)
+                      : "—"
+                  }
                 />
               </div>
             </section>

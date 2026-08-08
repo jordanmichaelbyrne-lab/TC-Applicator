@@ -24,6 +24,7 @@ import {
   createPattern,
 } from "@/app/lib/repositories/oemPartPatterns";
 import { getCompanySettings, type CompanySettings } from "@/app/lib/settings/companySettings";
+import { getLatestCarbideGramsPerCm2 } from "@/app/lib/repositories/costAnalysis";
 import { getCurrentUserAndCompany } from "@/app/lib/repositories/tenant";
 import { getSignedCompanyLogoUrl } from "@/app/lib/repositories/platformOverview";
 
@@ -172,6 +173,26 @@ export async function getCompanySettingsAction(): Promise<SettingsActionResult> 
   }
 }
 
+// ---- Carbide weight ratio (g/cm²), for the live weight display on
+// the New Estimate page — see getLatestCarbideGramsPerCm2's own doc
+// comment for why this is safe to expose beyond director/TC Support ----
+
+type CarbideRatioActionResult =
+  | { success: true; gramsPerCm2: number | null }
+  | { success: false; message: string };
+
+export async function getCarbideGramsPerCm2Action(): Promise<CarbideRatioActionResult> {
+  try {
+    const gramsPerCm2 = await getLatestCarbideGramsPerCm2();
+    return { success: true, gramsPerCm2 };
+  } catch (error) {
+    return {
+      success: false,
+      message: toErrorMessage(error, "Unable to load carbide weight rate."),
+    };
+  }
+}
+
 // ---- Load a single existing estimate, for the edit-before-approve flow ----
 
 type GetEstimateActionResult =
@@ -259,6 +280,11 @@ export async function approveEstimateAction(formData: FormData) {
             thicknessMm: approved.thickness_mm,
             holeCount: approved.hole_count,
             holeDiameterMm: approved.hole_diameter_mm ?? 0,
+            holeRows:
+              approved.hole_rows === 2 || approved.hole_rows === 3
+                ? approved.hole_rows
+                : 1,
+            holeOffset: Boolean(approved.hole_offset),
             compatibleMachines: approved.machine_model
               ? approved.machine_model.split(",").map((m) => m.trim()).filter(Boolean)
               : [],
@@ -268,6 +294,8 @@ export async function approveEstimateAction(formData: FormData) {
               bottomFaceRunsPerSide: approved.bottom_face_runs_per_side,
               eyebrowsPerHole:
                 approved.eyebrow_type === "short" ? approved.short_eyebrows_per_hole : 0,
+              leftEndRuns: approved.left_end_runs,
+              rightEndRuns: approved.right_end_runs,
             },
             engineeringStatus: "Pending Verification",
             conditionRequirement: "New OEM Specification Only",

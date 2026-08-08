@@ -46,6 +46,7 @@ type QuoteSpecSheetProps = {
   eyebrowAreaCm2: number;
   endRunQuantity?: number;
   endRunAreaCm2?: number;
+  carbideWeightG?: number | null;
   totalAreaCm2: number;
 
   costRate: number;
@@ -65,6 +66,12 @@ function formatCurrency(value: number) {
     style: "currency",
     currency: "AUD",
   }).format(value);
+}
+
+function formatWeight(grams: number) {
+  return grams >= 1000
+    ? `${(grams / 1000).toFixed(2)} kg`
+    : `${grams.toFixed(0)} g`;
 }
 
 function formatDate(value: string) {
@@ -126,6 +133,7 @@ export default function QuoteSpecSheet({
   eyebrowAreaCm2,
   endRunQuantity = 0,
   endRunAreaCm2 = 0,
+  carbideWeightG = null,
   totalAreaCm2,
 
   costRate,
@@ -364,6 +372,52 @@ export default function QuoteSpecSheet({
           </table>
         </section>
 
+        <section className="quote-section">
+          <h2 className="quote-section-title">
+            Coating Quantities
+          </h2>
+
+          <table className="quote-table">
+            <thead>
+              <tr>
+                <th>Full-Length Runs</th>
+                <th>Eyebrow Quantity</th>
+                <th>End Runs</th>
+                <th>Full-Length Area</th>
+                <th>Eyebrow Area</th>
+                <th>End Run Area</th>
+                <th>Total Coated Area</th>
+                <th>Carbide Weight</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              <tr>
+                <td>{totalFullLengthRuns}</td>
+                <td>{eyebrowQuantity}</td>
+                <td>{endRunQuantity}</td>
+                <td>
+                  {fullLengthAreaCm2.toFixed(0)} cm²
+                </td>
+                <td>
+                  {eyebrowAreaCm2.toFixed(0)} cm²
+                </td>
+                <td>
+                  {endRunAreaCm2.toFixed(0)} cm²
+                </td>
+                <td>
+                  {totalAreaCm2.toFixed(0)} cm²
+                </td>
+                <td>
+                  {carbideWeightG !== null && carbideWeightG !== undefined
+                    ? formatWeight(carbideWeightG)
+                    : "—"}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
         <section className="quote-section quote-section-drawing">
           <h2 className="quote-section-title">
             Coating Layout
@@ -396,46 +450,6 @@ export default function QuoteSpecSheet({
             Drawing is indicative and should be read together
             with the coating specifications shown on this sheet.
           </p>
-        </section>
-
-        <section className="quote-section">
-          <h2 className="quote-section-title">
-            Coating Quantities
-          </h2>
-
-          <table className="quote-table">
-            <thead>
-              <tr>
-                <th>Full-Length Runs</th>
-                <th>Eyebrow Quantity</th>
-                <th>End Runs</th>
-                <th>Full-Length Area</th>
-                <th>Eyebrow Area</th>
-                <th>End Run Area</th>
-                <th>Total Coated Area</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              <tr>
-                <td>{totalFullLengthRuns}</td>
-                <td>{eyebrowQuantity}</td>
-                <td>{endRunQuantity}</td>
-                <td>
-                  {fullLengthAreaCm2.toFixed(0)} cm²
-                </td>
-                <td>
-                  {eyebrowAreaCm2.toFixed(0)} cm²
-                </td>
-                <td>
-                  {endRunAreaCm2.toFixed(0)} cm²
-                </td>
-                <td>
-                  {totalAreaCm2.toFixed(0)} cm²
-                </td>
-              </tr>
-            </tbody>
-          </table>
         </section>
 
         <section className="quote-section">
@@ -501,7 +515,7 @@ export default function QuoteSpecSheet({
           </div>
         </section>
 
-        {notes && (
+        {notes && !isCustomerCopy && (
           <section className="quote-section">
             <h2 className="quote-section-title">
               Notes
@@ -532,17 +546,19 @@ export default function QuoteSpecSheet({
 
         <footer className="quote-footer">
           <p>
-            This quotation is based on the dimensions and
-            coating pattern shown above.
-          </p>
-
-          <p>
-            Final production is subject to confirmation of the
-            physical cutting edge and approved coating layout.
+            This quotation is based on the dimensions and coating pattern shown above.
+            Final production is subject to confirmation of the physical cutting edge and
+            approved coating layout.
           </p>
 
           <p className="quote-powered-by">Powered by TC Applicator</p>
         </footer>
+
+        {!isCustomerCopy && (
+          <div className="quote-workshop-watermark" aria-hidden="true">
+            <span>Internal Use — Workshop Copy</span>
+          </div>
+        )}
       </section>
 
       <style jsx global>{`
@@ -569,7 +585,7 @@ export default function QuoteSpecSheet({
 
         .quote-company-logo {
           display: block;
-          max-height: 46px;
+          max-height: 64px;
           width: auto;
         }
 
@@ -613,25 +629,25 @@ export default function QuoteSpecSheet({
         }
 
         .quote-section {
-          margin-top: 16px;
+          margin-top: 22px;
           break-inside: avoid;
           page-break-inside: avoid;
         }
 
         .quote-section-title {
-          margin: 0 0 8px;
-          border-bottom: 1px solid #94a3b8;
-          padding-bottom: 4px;
-          font-size: 14px;
+          margin: 0 0 10px;
+          border-bottom: 1px solid #e2e8f0;
+          padding-bottom: 6px;
+          font-size: 13px;
           font-weight: 700;
+          letter-spacing: 0.02em;
+          text-transform: uppercase;
+          color: #334155;
         }
 
         .quote-grid {
           display: grid;
-          gap: 1px;
-          overflow: hidden;
-          border: 1px solid #cbd5e1;
-          background: #cbd5e1;
+          gap: 12px;
         }
 
         .quote-grid-three {
@@ -639,9 +655,7 @@ export default function QuoteSpecSheet({
         }
 
         .quote-specification-item {
-          min-height: 56px;
-          background: white;
-          padding: 8px 10px;
+          padding: 4px 0;
         }
 
         .quote-table {
@@ -652,15 +666,24 @@ export default function QuoteSpecSheet({
 
         .quote-table th,
         .quote-table td {
-          border: 1px solid #cbd5e1;
-          padding: 6px 8px;
+          border-bottom: 1px solid #eef2f7;
+          padding: 8px 10px;
           text-align: left;
           vertical-align: middle;
         }
 
         .quote-table th {
-          background: #f1f5f9;
+          border-bottom: 1px solid #cbd5e1;
+          background: transparent;
           font-weight: 700;
+          color: #64748b;
+          font-size: 10px;
+          text-transform: uppercase;
+          letter-spacing: 0.02em;
+        }
+
+        .quote-table tr:last-child td {
+          border-bottom: none;
         }
 
         .quote-section-drawing {
@@ -683,7 +706,7 @@ export default function QuoteSpecSheet({
           display: block;
           width: 100%;
           height: auto;
-          max-height: 300px;
+          max-height: 330px;
         }
 
         .quote-drawing-note {
@@ -731,9 +754,9 @@ export default function QuoteSpecSheet({
         }
 
         .quote-notes {
-          min-height: 60px;
+          min-height: 40px;
           border: 1px solid #cbd5e1;
-          padding: 10px;
+          padding: 8px 10px;
           white-space: pre-wrap;
           font-size: 11px;
         }
@@ -742,7 +765,7 @@ export default function QuoteSpecSheet({
           display: grid;
           grid-template-columns: repeat(3, 1fr);
           gap: 20px;
-          margin-top: 24px;
+          margin-top: 14px;
           break-inside: avoid;
           page-break-inside: avoid;
         }
@@ -755,14 +778,14 @@ export default function QuoteSpecSheet({
 
         .quote-approval span {
           display: block;
-          height: 30px;
+          height: 22px;
           border-bottom: 1px solid #0f172a;
         }
 
         .quote-footer {
-          margin-top: 18px;
+          margin-top: 10px;
           border-top: 1px solid #cbd5e1;
-          padding-top: 8px;
+          padding-top: 6px;
           font-size: 8px;
           color: #64748b;
         }
@@ -775,6 +798,10 @@ export default function QuoteSpecSheet({
           margin-top: 6px !important;
           color: #94a3b8;
           font-style: italic;
+        }
+
+        .quote-workshop-watermark {
+          display: none;
         }
 
         @page {
@@ -815,7 +842,45 @@ export default function QuoteSpecSheet({
           }
 
           .quote-section {
-            margin-top: 10px;
+            margin-top: 6px;
+          }
+
+          .quote-section-title {
+            margin-bottom: 5px;
+            padding-bottom: 3px;
+          }
+
+          .quote-grid {
+            gap: 6px;
+          }
+
+          .quote-title-block {
+            margin-top: 8px;
+            padding: 8px;
+          }
+
+          .quote-table th,
+          .quote-table td {
+            padding: 4px 8px;
+          }
+
+          .quote-workshop-watermark {
+            display: flex;
+            position: fixed;
+            inset: 0;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+            z-index: 9999;
+          }
+
+          .quote-workshop-watermark span {
+            transform: rotate(-28deg);
+            font-size: 46px;
+            font-weight: 800;
+            letter-spacing: 1px;
+            color: rgba(220, 38, 38, 0.28);
+            white-space: nowrap;
           }
         }
 

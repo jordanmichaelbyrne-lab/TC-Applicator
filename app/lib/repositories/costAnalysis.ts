@@ -1,5 +1,6 @@
 import "server-only";
 
+import { createAdminClient } from "@/app/lib/supabase/admin";
 import { getCurrentUserAndCompany } from "@/app/lib/repositories/tenant";
 
 export type CostAnalysisSnapshot = {
@@ -189,4 +190,38 @@ export async function listCostAnalysisSnapshotsForPlatformAdmin(
   }
 
   return (data ?? []) as CostAnalysisSnapshot[];
+}
+
+/**
+ * Returns ONLY the derived grams-per-cm² ratio from the company's
+ * most recent Cost Analysis snapshot — never the underlying $ figures
+ * or the raw deposit-rate/travel-speed inputs individually. That's
+ * what makes this safe to expose to any company member (e.g. a
+ * salesperson quoting an estimate), even though the full Cost
+ * Analysis data it's derived from stays director/TC-Support-only.
+ * Uses the service-role client to read past the RLS restriction on
+ * cost_analysis_snapshots, deliberately — the narrow return value is
+ * the actual safeguard here, not the query permission.
+ */
+export async function getLatestCarbideGramsPerCm2(): Promise<number | null> {
+  const { companyId } = await getCurrentUserAndCompany();
+  const supabase = createAdminClient();
+
+  const { data, error } = await supabase
+    .from("cost_analysis_snapshots")
+    .select("deposit_rate_g_per_min, travel_speed_cm_per_min")
+    .eq("company_id", companyId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Unable to load carbide weight rate: ${error.message}`);
+  }
+
+  if (!data || !data.travel_speed_cm_per_min) {
+    return null;
+  }
+
+  return data.deposit_rate_g_per_min / data.travel_speed_cm_per_min;
 }
