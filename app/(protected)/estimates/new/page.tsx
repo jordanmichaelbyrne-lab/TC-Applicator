@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import CoatingLayout from "@/components/drawing/CoatingLayout";
 import CoatingLayout3D from "@/components/drawing/CoatingLayout3D";
+import CoatingLayoutEndBit from "@/components/drawing/CoatingLayoutEndBit";
 import {
   saveDraftAction,
   submitForApprovalAction,
@@ -132,6 +133,14 @@ export default function NewEstimatePage() {
   const [leftEndRuns, setLeftEndRuns] = useState(0);
   const [rightEndRuns, setRightEndRuns] = useState(0);
 
+  // Dozer End Bit — a completely different part shape/hole
+  // pattern/coating terminology to the normal straight-edge model, so
+  // it's its own toggle rather than another edgeProfile option.
+  const [isDozerEndBit, setIsDozerEndBit] = useState(false);
+  const [endBitHand, setEndBitHand] = useState<"LH" | "RH">("RH");
+  const [endBitFullLengthRuns, setEndBitFullLengthRuns] = useState(0);
+  const [endBitShoulderRuns, setEndBitShoulderRuns] = useState(0);
+
   const [sellRatePerCm2, setSellRatePerCm2] = useState(0);
 
   const [oemPartId, setOemPartId] = useState<string | null>(null);
@@ -169,9 +178,6 @@ export default function NewEstimatePage() {
   );
   const [loadExistingError, setLoadExistingError] = useState("");
 
-  // "No holes" just means holeCount = 0 — no separate DB field needed,
-  // since the drawing and area calc already treat a zero hole count
-  // correctly. This just keeps holeCount pinned at 0 while checked.
   useEffect(() => {
     if (noHoles) {
       setHoleCount(0);
@@ -212,9 +218,6 @@ export default function NewEstimatePage() {
         setHoleOffsetMm(settingsResult.settings.hole_offset_mm);
       }
 
-      // Silently leave carbideGramsPerCm2 as null on failure/no-data
-      // (e.g. no Cost Analysis snapshot saved yet) — the weight
-      // display just shows "—" rather than erroring the whole page.
       if (carbideRatioResult.success) {
         setCarbideGramsPerCm2(carbideRatioResult.gramsPerCm2);
       }
@@ -414,6 +417,7 @@ export default function NewEstimatePage() {
     setLeftEndRuns(0);
     setRightEndRuns(0);
     setIsCreatingNewPattern(false);
+    setIsDozerEndBit(part.partCategory === "Dozer End Bit");
 
     setSaveMessage("");
   }
@@ -427,9 +431,6 @@ export default function NewEstimatePage() {
     setBottomFaceRuns(pattern.bottomFaceRunsPerSide);
     setEyebrowType(pattern.eyebrowType);
     setShortEyebrowsPerHole(pattern.shortEyebrowsPerHole || 2);
-    // Saved patterns don't carry end-run counts yet (oem_part_patterns
-    // hasn't been extended for this) — reset to 0 rather than leaving
-    // whatever was previously entered on screen.
     setLeftEndRuns(0);
     setRightEndRuns(0);
   }
@@ -478,6 +479,11 @@ export default function NewEstimatePage() {
     setShortEyebrowsPerHole(2);
     setLeftEndRuns(0);
     setRightEndRuns(0);
+
+    setIsDozerEndBit(false);
+    setEndBitHand("RH");
+    setEndBitFullLengthRuns(0);
+    setEndBitShoulderRuns(0);
 
     setPatternOptions([]);
     setIsCreatingNewPattern(false);
@@ -549,9 +555,6 @@ export default function NewEstimatePage() {
 
     const fullLengthAreaMm2 = lengthMm * runWidthMm * totalFullLengthRuns;
 
-    // Eyebrows scale with the actual number of hole rows — a 3-row
-    // edge has 3x the physical holes (and eyebrows) of the same
-    // holeCount value on a single-row edge.
     const eyebrowHoleMultiplier = holeCount === 0 ? 0 : Math.max(holeRows, 1);
     const shortEyebrowQuantity =
       eyebrowType === "short"
@@ -561,14 +564,12 @@ export default function NewEstimatePage() {
     const shortEyebrowAreaMm2 =
       shortEyebrowQuantity * eyebrowLengthMm * runWidthMm;
 
-    // End runs travel the WIDTH direction (they're on the short end
-    // faces, opposite the bevel edge), not the length — unlike every
-    // other run type here, so their area uses widthMm instead.
     const endRunQuantity = leftEndRuns + rightEndRuns;
     const endRunAreaMm2 = endRunQuantity * widthMm * runWidthMm;
 
-    const totalAreaCm2 =
-      (fullLengthAreaMm2 + shortEyebrowAreaMm2 + endRunAreaMm2) / 100;
+    const totalAreaCm2 = isDozerEndBit
+      ? 0
+      : (fullLengthAreaMm2 + shortEyebrowAreaMm2 + endRunAreaMm2) / 100;
 
     const totalCarbideCost = totalAreaCm2 * carbideCostRatePerCm2;
 
@@ -577,8 +578,6 @@ export default function NewEstimatePage() {
     const grossMargin =
       totalSellPrice > 0 ? (grossProfit / totalSellPrice) * 100 : 0;
 
-    // null when no Cost Analysis snapshot has been saved yet — the
-    // weight display shows "—" in that case rather than a false 0.
     const carbideWeightG =
       carbideGramsPerCm2 !== null ? totalAreaCm2 * carbideGramsPerCm2 : null;
 
@@ -616,6 +615,7 @@ export default function NewEstimatePage() {
     eyebrowLengthMm,
     carbideCostRatePerCm2,
     carbideGramsPerCm2,
+    isDozerEndBit,
   ]);
 
   function buildEstimateInput(): CreateEstimateInput {
@@ -650,9 +650,6 @@ export default function NewEstimatePage() {
       totalCarbideCost: calculations.totalCarbideCost,
       sellRatePerCm2,
       totalSellPrice: calculations.totalSellPrice,
-      // Snapshot the settings actually used for this calculation, so
-      // a later change to company Coating Defaults never alters how
-      // this estimate's drawing/spec sheet displays after the fact.
       runWidthMm,
       eyebrowLengthMm,
       holeRowSpacingMm,
@@ -950,83 +947,113 @@ export default function NewEstimatePage() {
                     </label>
                   </div>
 
-                  <div className="mb-4 flex flex-wrap items-end gap-4">
-                    <label className="block max-w-xs">
-                      <span className="mb-1 block text-sm font-medium">
-                        Edge profile
-                      </span>
-
-                      <select
-                        value={edgeProfile}
-                        onChange={(event) =>
-                          setEdgeProfile(event.target.value as EdgeProfile)
-                        }
-                        className="w-full rounded border border-slate-300 px-3 py-2"
-                      >
-                        <option value="single-bevel">Single Bevel</option>
-                        <option value="double-bevel">
-                          Double Bevel (reversible)
-                        </option>
-                        <option value="square-edge">Square Edge</option>
-                      </select>
-                    </label>
-
-                    <label className="flex items-center gap-2 pb-2.5">
+                  <div className="mb-4 flex flex-wrap items-center gap-4 rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
+                    <label className="flex items-center gap-2">
                       <input
                         type="checkbox"
-                        checked={noHoles}
-                        onChange={(event) => setNoHoles(event.target.checked)}
+                        checked={isDozerEndBit}
+                        onChange={(event) => setIsDozerEndBit(event.target.checked)}
                         className="h-4 w-4 rounded border-slate-300"
                       />
-                      <span className="text-sm font-medium">No holes</span>
+                      <span className="text-sm font-medium">Dozer End Bit</span>
                     </label>
 
-                    {!noHoles && (
-                      <>
-                        <label className="block max-w-xs">
-                          <span className="mb-1 block text-sm font-medium">
-                            Hole rows
-                          </span>
-
-                          <select
-                            value={holeRows}
-                            onChange={(event) =>
-                              setHoleRows(Number(event.target.value) as 1 | 2 | 3)
-                            }
-                            className="w-full rounded border border-slate-300 px-3 py-2"
-                          >
-                            <option value={1}>Single row</option>
-                            <option value={2}>2 row</option>
-                            <option value={3}>3 row</option>
-                          </select>
-
-                          {holeRows > 1 && (
-                            <span className="mt-1 block text-xs text-slate-500">
-                              Standard row spacing: {holeRowSpacingMm} mm
-                            </span>
-                          )}
-                        </label>
-
-                        <label className="flex items-center gap-2 pb-2.5">
-                          <input
-                            type="checkbox"
-                            checked={holeOffset}
-                            onChange={(event) => setHoleOffset(event.target.checked)}
-                            className="h-4 w-4 rounded border-slate-300"
-                          />
-                          <span className="text-sm font-medium">
-                            Offset toward top edge
-                          </span>
-                        </label>
-
-                        {holeOffset && (
-                          <span className="pb-2.5 text-xs text-slate-500">
-                            Standard offset: {holeOffsetMm} mm
-                          </span>
-                        )}
-                      </>
+                    {isDozerEndBit && (
+                      <label className="flex items-center gap-2">
+                        <span className="text-sm font-medium">Hand</span>
+                        <select
+                          value={endBitHand}
+                          onChange={(event) =>
+                            setEndBitHand(event.target.value as "LH" | "RH")
+                          }
+                          className="rounded border border-slate-300 px-3 py-1.5"
+                        >
+                          <option value="RH">Right Hand (RH)</option>
+                          <option value="LH">Left Hand (LH)</option>
+                        </select>
+                      </label>
                     )}
                   </div>
+
+                  {!isDozerEndBit && (
+                    <div className="mb-4 flex flex-wrap items-end gap-4">
+                      <label className="block max-w-xs">
+                        <span className="mb-1 block text-sm font-medium">
+                          Edge profile
+                        </span>
+
+                        <select
+                          value={edgeProfile}
+                          onChange={(event) =>
+                            setEdgeProfile(event.target.value as EdgeProfile)
+                          }
+                          className="w-full rounded border border-slate-300 px-3 py-2"
+                        >
+                          <option value="single-bevel">Single Bevel</option>
+                          <option value="double-bevel">
+                            Double Bevel (reversible)
+                          </option>
+                          <option value="square-edge">Square Edge</option>
+                        </select>
+                      </label>
+
+                      <label className="flex items-center gap-2 pb-2.5">
+                        <input
+                          type="checkbox"
+                          checked={noHoles}
+                          onChange={(event) => setNoHoles(event.target.checked)}
+                          className="h-4 w-4 rounded border-slate-300"
+                        />
+                        <span className="text-sm font-medium">No holes</span>
+                      </label>
+
+                      {!noHoles && (
+                        <>
+                          <label className="block max-w-xs">
+                            <span className="mb-1 block text-sm font-medium">
+                              Hole rows
+                            </span>
+
+                            <select
+                              value={holeRows}
+                              onChange={(event) =>
+                                setHoleRows(Number(event.target.value) as 1 | 2 | 3)
+                              }
+                              className="w-full rounded border border-slate-300 px-3 py-2"
+                            >
+                              <option value={1}>Single row</option>
+                              <option value={2}>2 row</option>
+                              <option value={3}>3 row</option>
+                            </select>
+
+                            {holeRows > 1 && (
+                              <span className="mt-1 block text-xs text-slate-500">
+                                Standard row spacing: {holeRowSpacingMm} mm
+                              </span>
+                            )}
+                          </label>
+
+                          <label className="flex items-center gap-2 pb-2.5">
+                            <input
+                              type="checkbox"
+                              checked={holeOffset}
+                              onChange={(event) => setHoleOffset(event.target.checked)}
+                              className="h-4 w-4 rounded border-slate-300"
+                            />
+                            <span className="text-sm font-medium">
+                              Offset toward top edge
+                            </span>
+                          </label>
+
+                          {holeOffset && (
+                            <span className="pb-2.5 text-xs text-slate-500">
+                              Standard offset: {holeOffsetMm} mm
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
 
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
                     <NumberField
@@ -1051,7 +1078,7 @@ export default function NewEstimatePage() {
                       step={0.1}
                     />
 
-                    {!noHoles && (
+                    {!isDozerEndBit && !noHoles && (
                       <>
                         <NumberField
                           label={holeRows > 1 ? "Bolt holes (per row)" : "Bolt holes"}
@@ -1069,11 +1096,19 @@ export default function NewEstimatePage() {
                       </>
                     )}
                   </div>
+
+                  {isDozerEndBit && (
+                    <p className="mt-3 text-xs text-slate-500">
+                      Bolt hole count and layout are fixed for this shape
+                      template — 7 holes, positions set automatically. No
+                      manual entry needed.
+                    </p>
+                  )}
                 </div>
               )}
             </section>
 
-            {partIsSelected && (
+            {partIsSelected && !isDozerEndBit && (
               <section className="print-hidden rounded-lg border border-slate-300 bg-white shadow-sm">
                 <div className="border-b border-slate-200 px-5 py-4">
                   <h3 className="font-semibold">Coating pattern for this part</h3>
@@ -1167,169 +1202,206 @@ export default function NewEstimatePage() {
               </section>
             )}
 
-            <section className="rounded-lg border border-slate-300 bg-white shadow-sm">
-              <div className="border-b border-slate-200 px-5 py-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="font-semibold">Coating pattern</h3>
-
-                  {!isLoadingSettings && (
-                    <div className="flex flex-wrap gap-2 text-xs">
-                      <span className="rounded-full border border-slate-300 bg-slate-50 px-2.5 py-1 font-medium text-slate-600">
-                        Run width: {runWidthMm} mm
-                      </span>
-                      {eyebrowType === "short" && (
-                        <span className="rounded-full border border-slate-300 bg-slate-50 px-2.5 py-1 font-medium text-slate-600">
-                          Eyebrow length: {eyebrowLengthMm} mm
-                        </span>
-                      )}
-                    </div>
-                  )}
+            {isDozerEndBit ? (
+              <section className="rounded-lg border border-slate-300 bg-white shadow-sm">
+                <div className="border-b border-slate-200 px-5 py-4">
+                  <h3 className="font-semibold">Coating pattern (Dozer End Bit)</h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Full length runs follow the tapered working edge. Shoulder
+                    runs are short ~100mm strips that sit immediately above
+                    however many full-length runs are entered.
+                  </p>
                 </div>
 
-                <p className="mt-1 text-sm text-slate-500">
-                  {partIsSelected && !isCreatingNewPattern && oemPartPatternId
-                    ? "Loaded from the selected pattern above — adjust if needed."
-                    : partIsSelected
-                      ? "Pick a pattern above, or enter one manually below."
-                      : "Enter the coating pattern for this new part."}
-                </p>
-              </div>
+                <div className="grid gap-4 p-5 sm:grid-cols-2">
+                  <NumberField
+                    label="Full length runs"
+                    value={endBitFullLengthRuns}
+                    onChange={(value) =>
+                      setEndBitFullLengthRuns(Math.max(0, Math.min(5, value)))
+                    }
+                  />
 
-              <div className="grid gap-4 p-5 sm:grid-cols-2">
-                <NumberField
-                  label="Bevel runs per side"
-                  value={topBevelRuns}
-                  onChange={(value) => {
-                    setTopBevelRuns(value);
-                    setOemPartPatternId(null);
-                  }}
-                />
+                  <NumberField
+                    label="Shoulder runs"
+                    value={endBitShoulderRuns}
+                    onChange={(value) =>
+                      setEndBitShoulderRuns(Math.max(0, Math.min(5, value)))
+                    }
+                  />
+                </div>
 
-                <NumberField
-                  label="Leading-edge runs per side"
-                  value={leadingEdgeRuns}
-                  onChange={(value) => {
-                    setLeadingEdgeRuns(value);
-                    setOemPartPatternId(null);
-                  }}
-                />
+                <div className="border-t border-slate-200 bg-amber-50 px-5 py-3 text-sm text-amber-800">
+                  Pricing isn&apos;t available for Dozer End Bits yet — run-length
+                  data for this shape hasn&apos;t been entered. Area, cost and sell
+                  price will show as $0 until that&apos;s added.
+                </div>
+              </section>
+            ) : (
+              <section className="rounded-lg border border-slate-300 bg-white shadow-sm">
+                <div className="border-b border-slate-200 px-5 py-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="font-semibold">Coating pattern</h3>
 
-                <NumberField
-                  label="Bottom-face runs per side"
-                  value={bottomFaceRuns}
-                  onChange={(value) => {
-                    setBottomFaceRuns(value);
-                    setOemPartPatternId(null);
-                  }}
-                />
+                    {!isLoadingSettings && (
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        <span className="rounded-full border border-slate-300 bg-slate-50 px-2.5 py-1 font-medium text-slate-600">
+                          Run width: {runWidthMm} mm
+                        </span>
+                        {eyebrowType === "short" && (
+                          <span className="rounded-full border border-slate-300 bg-slate-50 px-2.5 py-1 font-medium text-slate-600">
+                            Eyebrow length: {eyebrowLengthMm} mm
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
 
-                <NumberField
-                  label="Left end runs"
-                  value={leftEndRuns}
-                  onChange={(value) => {
-                    setLeftEndRuns(value);
-                    setOemPartPatternId(null);
-                  }}
-                />
+                  <p className="mt-1 text-sm text-slate-500">
+                    {partIsSelected && !isCreatingNewPattern && oemPartPatternId
+                      ? "Loaded from the selected pattern above — adjust if needed."
+                      : partIsSelected
+                        ? "Pick a pattern above, or enter one manually below."
+                        : "Enter the coating pattern for this new part."}
+                  </p>
+                </div>
 
-                <NumberField
-                  label="Right end runs"
-                  value={rightEndRuns}
-                  onChange={(value) => {
-                    setRightEndRuns(value);
-                    setOemPartPatternId(null);
-                  }}
-                />
-
-                <label className="block">
-                  <span className="mb-1 block text-sm font-medium">
-                    Eyebrow type
-                  </span>
-
-                  <select
-                    value={eyebrowType}
-                    onChange={(event) => {
-                      setEyebrowType(
-                        event.target.value as
-                          | "none"
-                          | "short"
-                          | "full"
-                      );
+                <div className="grid gap-4 p-5 sm:grid-cols-2">
+                  <NumberField
+                    label="Bevel runs per side"
+                    value={topBevelRuns}
+                    onChange={(value) => {
+                      setTopBevelRuns(value);
                       setOemPartPatternId(null);
                     }}
-                    className="w-full rounded border border-slate-300 px-3 py-2"
-                  >
-                    <option value="none">None</option>
-                    <option value="short">Short eyebrows</option>
-                    <option value="full">Full-length eyebrows</option>
-                  </select>
-                </label>
+                  />
 
-                {eyebrowType === "short" && (
+                  <NumberField
+                    label="Leading-edge runs per side"
+                    value={leadingEdgeRuns}
+                    onChange={(value) => {
+                      setLeadingEdgeRuns(value);
+                      setOemPartPatternId(null);
+                    }}
+                  />
+
+                  <NumberField
+                    label="Bottom-face runs per side"
+                    value={bottomFaceRuns}
+                    onChange={(value) => {
+                      setBottomFaceRuns(value);
+                      setOemPartPatternId(null);
+                    }}
+                  />
+
+                  <NumberField
+                    label="Left end runs"
+                    value={leftEndRuns}
+                    onChange={(value) => {
+                      setLeftEndRuns(value);
+                      setOemPartPatternId(null);
+                    }}
+                  />
+
+                  <NumberField
+                    label="Right end runs"
+                    value={rightEndRuns}
+                    onChange={(value) => {
+                      setRightEndRuns(value);
+                      setOemPartPatternId(null);
+                    }}
+                  />
+
                   <label className="block">
                     <span className="mb-1 block text-sm font-medium">
-                      Short eyebrows per hole
+                      Eyebrow type
                     </span>
 
                     <select
-                      value={shortEyebrowsPerHole}
+                      value={eyebrowType}
                       onChange={(event) => {
-                        setShortEyebrowsPerHole(
-                          Number(event.target.value)
+                        setEyebrowType(
+                          event.target.value as
+                            | "none"
+                            | "short"
+                            | "full"
                         );
                         setOemPartPatternId(null);
                       }}
                       className="w-full rounded border border-slate-300 px-3 py-2"
                     >
-                      <option value={1}>1 per hole</option>
-                      <option value={2}>2 per hole</option>
+                      <option value="none">None</option>
+                      <option value="short">Short eyebrows</option>
+                      <option value="full">Full-length eyebrows</option>
                     </select>
                   </label>
-                )}
 
-                {eyebrowType === "full" && (
-                  <div className="rounded border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                    Two full-length runs: one on each side of the
-                    bolt-hole row.
-                  </div>
-                )}
-              </div>
+                  {eyebrowType === "short" && (
+                    <label className="block">
+                      <span className="mb-1 block text-sm font-medium">
+                        Short eyebrows per hole
+                      </span>
 
-              <div className="grid gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4 text-sm sm:grid-cols-5">
-                <SummaryItem
-                  label="Full-length runs"
-                  value={`${calculations.totalFullLengthRuns}`}
-                />
+                      <select
+                        value={shortEyebrowsPerHole}
+                        onChange={(event) => {
+                          setShortEyebrowsPerHole(
+                            Number(event.target.value)
+                          );
+                          setOemPartPatternId(null);
+                        }}
+                        className="w-full rounded border border-slate-300 px-3 py-2"
+                      >
+                        <option value={1}>1 per hole</option>
+                        <option value={2}>2 per hole</option>
+                      </select>
+                    </label>
+                  )}
 
-                <SummaryItem
-                  label="Eyebrows"
-                  value={
-                    eyebrowType === "full"
-                      ? `${calculations.fullEyebrowRunQuantity} full-length`
-                      : `${calculations.shortEyebrowQuantity} short`
-                  }
-                />
+                  {eyebrowType === "full" && (
+                    <div className="rounded border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                      Two full-length runs: one on each side of the
+                      bolt-hole row.
+                    </div>
+                  )}
+                </div>
 
-                <SummaryItem
-                  label="End runs"
-                  value={`${calculations.endRunQuantity}`}
-                />
+                <div className="grid gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4 text-sm sm:grid-cols-5">
+                  <SummaryItem
+                    label="Full-length runs"
+                    value={`${calculations.totalFullLengthRuns}`}
+                  />
 
-                <SummaryItem
-                  label="Coated area"
-                  value={`${calculations.totalAreaCm2.toFixed(0)} cm²`}
-                />
+                  <SummaryItem
+                    label="Eyebrows"
+                    value={
+                      eyebrowType === "full"
+                        ? `${calculations.fullEyebrowRunQuantity} full-length`
+                        : `${calculations.shortEyebrowQuantity} short`
+                    }
+                  />
 
-                <SummaryItem
-                  label="Carbide weight"
-                  value={
-                    calculations.carbideWeightG !== null
-                      ? formatWeight(calculations.carbideWeightG)
-                      : "—"
-                  }
-                />
-              </div>
-            </section>
+                  <SummaryItem
+                    label="End runs"
+                    value={`${calculations.endRunQuantity}`}
+                  />
+
+                  <SummaryItem
+                    label="Coated area"
+                    value={`${calculations.totalAreaCm2.toFixed(0)} cm²`}
+                  />
+
+                  <SummaryItem
+                    label="Carbide weight"
+                    value={
+                      calculations.carbideWeightG !== null
+                        ? formatWeight(calculations.carbideWeightG)
+                        : "—"
+                    }
+                  />
+                </div>
+              </section>
+            )}
 
             <section className="rounded-lg border border-slate-300 bg-white shadow-sm">
               <div className="border-b border-slate-200 px-5 py-4">
@@ -1397,7 +1469,12 @@ export default function NewEstimatePage() {
                 <button
                   type="button"
                   onClick={handleSubmitForApproval}
-                  disabled={!showForm || isSaving || isSubmitting}
+                  disabled={!showForm || isSaving || isSubmitting || isDozerEndBit}
+                  title={
+                    isDozerEndBit
+                      ? "Dozer End Bit pricing isn't available yet — run-length data still pending"
+                      : undefined
+                  }
                   className="print-hidden rounded bg-emerald-700 px-5 py-2.5 text-sm font-medium text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300"
                 >
                   {isSubmitting
@@ -1507,7 +1584,9 @@ export default function NewEstimatePage() {
 
           <aside className="h-fit rounded-lg border border-slate-300 bg-white shadow-sm xl:sticky xl:top-5">
             <div className="print-hidden flex items-center justify-between border-b border-slate-200 px-5 py-4">
-              <h3 className="font-semibold">Live coating layout</h3>
+              <h3 className="font-semibold">
+                {isDozerEndBit ? "Front face view" : "Live coating layout"}
+              </h3>
 
               {showForm && (
                 <span className="text-xs font-medium text-slate-500">
@@ -1520,28 +1599,36 @@ export default function NewEstimatePage() {
               {showForm ? (
                 <>
                   <div className="overflow-hidden rounded border border-slate-300 bg-white p-3 print-drawing">
-                    <CoatingLayout
-                      lengthMm={lengthMm}
-                      widthMm={widthMm}
-                      thicknessMm={thicknessMm}
-                      holeCount={holeCount}
-                      holeDiameterMm={holeDiameterMm}
-                      holeRows={holeRows}
-                      holeOffset={holeOffset}
-                      holeRowSpacingMm={holeRowSpacingMm}
-                      holeOffsetMm={holeOffsetMm}
-                      edgeProfile={edgeProfile}
-                      topBevelRuns={topBevelRuns}
-                      leadingEdgeRuns={leadingEdgeRuns}
-                      bottomFaceRuns={bottomFaceRuns}
-                      eyebrowType={eyebrowType}
-                      eyebrowsPerHole={
-                        eyebrowType === "short" ? shortEyebrowsPerHole : 0
-                      }
-                      runWidthMm={runWidthMm}
-                      leftEndRuns={leftEndRuns}
-                      rightEndRuns={rightEndRuns}
-                    />
+                    {isDozerEndBit ? (
+                      <CoatingLayoutEndBit
+                        hand={endBitHand}
+                        fullLengthRuns={endBitFullLengthRuns}
+                        shoulderRuns={endBitShoulderRuns}
+                      />
+                    ) : (
+                      <CoatingLayout
+                        lengthMm={lengthMm}
+                        widthMm={widthMm}
+                        thicknessMm={thicknessMm}
+                        holeCount={holeCount}
+                        holeDiameterMm={holeDiameterMm}
+                        holeRows={holeRows}
+                        holeOffset={holeOffset}
+                        holeRowSpacingMm={holeRowSpacingMm}
+                        holeOffsetMm={holeOffsetMm}
+                        edgeProfile={edgeProfile}
+                        topBevelRuns={topBevelRuns}
+                        leadingEdgeRuns={leadingEdgeRuns}
+                        bottomFaceRuns={bottomFaceRuns}
+                        eyebrowType={eyebrowType}
+                        eyebrowsPerHole={
+                          eyebrowType === "short" ? shortEyebrowsPerHole : 0
+                        }
+                        runWidthMm={runWidthMm}
+                        leftEndRuns={leftEndRuns}
+                        rightEndRuns={rightEndRuns}
+                      />
+                    )}
                   </div>
 
                   <div className="print-hidden mt-4 rounded border border-slate-200 bg-slate-50 p-4">
@@ -1588,9 +1675,6 @@ export default function NewEstimatePage() {
           </aside>
         </div>
 
-        {/* 3D Preview — parked for now, needs more work before showing
-            to users again. Flip the condition below back to
-            `showForm` to re-enable once it's ready. */}
         {false && showForm && (
           <section className="print-hidden mt-5 rounded-lg border border-slate-300 bg-white shadow-sm">
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
@@ -1775,10 +1859,6 @@ function NumberField({
 }: NumberFieldProps) {
   const [text, setText] = useState(String(value));
 
-  // Keep the field's own text in sync when the value changes from
-  // outside (e.g. loading a saved part/pattern/estimate) — but not
-  // while the user is actively typing in THIS field, or every
-  // keystroke's re-render would fight what they just typed.
   useEffect(() => {
     setText(String(value));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1805,10 +1885,6 @@ function NumberField({
             const raw = event.target.value;
             setText(raw);
 
-            // Only push a live number up while it parses cleanly —
-            // lets the field sit empty or mid-edit (e.g. "12.") without
-            // being forced back to 0, while calculations elsewhere
-            // still update as soon as a valid number is typed.
             if (raw.trim() !== "" && Number.isFinite(Number(raw))) {
               onChange(Number(raw));
             }
